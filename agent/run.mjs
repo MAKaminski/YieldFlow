@@ -407,32 +407,79 @@ async function prefill(page, vault, allowedKeys) {
 // detects the next navigational button, tells the user exactly what it is, and
 // (with consent) clicks it — advancing page by page until the identity/KYC step,
 // where it always stops. It NEVER clicks submit / e-sign / identity actions.
+// Page CTAs that move toward the application.
 const ADVANCE_RE =
   /^(open (an )?account|apply( now| online| today)?|get started|open now|continue|confirm|next|proceed|enroll|start( application)?)\.?$/i;
+// Inside a gate modal (ZIP/location/"see results"), these primary buttons submit
+// the field we just filled and clear the overlay — navigational, not an app submit.
+const MODAL_ADVANCE_RE =
+  /^(confirm|continue|submit|update|see results|apply|go|ok|okay|done|next|yes|proceed)\.?$/i;
+// Never auto-click these anywhere.
 const AVOID_RE =
-  /(sign ?in|log ?in|submit|e-?sign|i agree|accept|verify (your )?identity|upload|cancel|close|back)/i;
+  /(sign ?in|log ?in|e-?sign|i agree|^agree|accept|verify (your )?identity|upload|cancel|close|dismiss|^back$|no thanks|maybe later)/i;
+// On a full page (not a modal) also avoid a bare "submit" (could be an app submit).
+const PAGE_AVOID_RE = /submit/i;
 // Fields that mean we've reached identity/KYC — stop auto-advancing there.
 const IDENTITY_RE = /ssn|social security|date of birth|\bdob\b|mother'?s maiden|driver'?s license/i;
 
-/** Best "advance to the application" button on the page, or null. */
+async function elText(el) {
+  const raw =
+    (await el.innerText().catch(() => "")) ||
+    (await el.getAttribute("value").catch(() => "")) ||
+    (await el.getAttribute("aria-label").catch(() => "")) ||
+    "";
+  return raw.trim().replace(/\s+/g, " ");
+}
+
+/** The first visible modal/dialog that actually contains a button, else null. */
+async function findOpenModal(page) {
+  const sels = [
+    "[role='dialog']",
+    "[aria-modal='true']",
+    "dialog[open]",
+    "[class*='modal']",
+    "[class*='Modal']",
+    "[class*='overlay']",
+  ];
+  for (const sel of sels) {
+    for (const el of await page.$$(`${sel}:visible`)) {
+      const hasBtn = await el.$("button:visible, [role='button']:visible, input[type='submit']:visible");
+      if (hasBtn) return el;
+    }
+  }
+  return null;
+}
+
+/**
+ * Best "advance" button. If a gate modal is open, its primary confirm/submit
+ * button wins (it submits the field just filled and clears the overlay); only
+ * otherwise do we look at page CTAs. Returns { el, txt, inModal } or null.
+ */
 async function findAdvanceCta(page) {
-  const els = await page.$$(
+  const modal = await findOpenModal(page);
+  const scope = modal ?? page;
+  const matchRe = modal ? MODAL_ADVANCE_RE : ADVANCE_RE;
+  const els = await scope.$$(
     "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
   );
   const cands = [];
   for (const el of els) {
-    const raw =
-      (await el.innerText().catch(() => "")) ||
-      (await el.getAttribute("value").catch(() => "")) ||
-      (await el.getAttribute("aria-label").catch(() => "")) ||
-      "";
-    const txt = raw.trim().replace(/\s+/g, " ");
+    const txt = await elText(el);
     if (!txt || txt.length > 32) continue;
     if (AVOID_RE.test(txt)) continue;
-    if (ADVANCE_RE.test(txt)) cands.push({ el, txt });
+    if (!modal && PAGE_AVOID_RE.test(txt)) continue;
+    if (matchRe.test(txt)) cands.push({ el, txt, inModal: !!modal });
   }
   const rank = (t) =>
-    /open (an )?account|apply/i.test(t) ? 3 : /get started|proceed|start/i.test(t) ? 2 : 1;
+    modal
+      ? /confirm|continue|submit|see results|update|yes|ok/i.test(t)
+        ? 2
+        : 1
+      : /open (an )?account|apply/i.test(t)
+        ? 3
+        : /get started|proceed|start/i.test(t)
+          ? 2
+          : 1;
   cands.sort((a, b) => rank(b.txt) - rank(a.txt));
   return cands[0] ?? null;
 }
@@ -501,9 +548,12 @@ async function driveSteps(page, vault, job) {
       break;
     }
 
-    console.log(`\n👉 Next: click ${bold(`"${cta.txt}"`)} to continue toward the application.`);
+    const why = cta.inModal
+      ? "to submit this popup and continue"
+      : "to continue toward the application";
+    console.log(`\n👉 Next: click ${bold(`"${cta.txt}"`)} ${why}.`);
     if (job.offer.offerCode) console.log(dim(`   (remember the promo/offer code: ${job.offer.offerCode})`));
-    log(`advance CTA: "${cta.txt}"`);
+    log(`advance CTA: "${cta.txt}" inModal=${cta.inModal}`);
     const choice = await promptStep();
     if (choice === "stop") {
       log("user stopped auto-advance");
