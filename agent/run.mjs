@@ -13,10 +13,15 @@
 // Quickstart (no Tauri, no Rust, no browser download — just Node 18+ and Chrome):
 //   YIELDFLOW_BASE="https://your-yieldflow-domain" node run.mjs <campaignId>
 //
-// Flags / input:
-//   <arg>          a campaign id, a yieldflow://campaign/<id> URL,
-//                  or a full https://…/campaigns/<id> URL
-//   --base <url>   deployment base URL (or set YIELDFLOW_BASE)
+// Commands:
+//   node run.mjs --offers            list offers you can start a campaign for
+//   node run.mjs --start <offerId>   start a campaign, print its id + run command
+//   node run.mjs --list              list campaigns you can run
+//   node run.mjs <campaignId|URL>    run the agent (id, yieldflow://campaign/<id>,
+//                                    or a full https://…/campaigns/<id> URL)
+//
+// Flags:
+//   --base <url>   base URL (or YIELDFLOW_BASE); defaults to http://localhost:3000
 //   --dry-run      fetch the job and print the plan, but DON'T open a browser
 //   --bypass <t>   Vercel protection-bypass token (or set YIELDFLOW_BYPASS) —
 //                  only needed against a protected preview URL; running the app
@@ -34,8 +39,19 @@ const baseArg = baseFlagIdx >= 0 ? args[baseFlagIdx + 1] : undefined;
 const bypassFlagIdx = args.indexOf("--bypass");
 const bypassArg = bypassFlagIdx >= 0 ? args[bypassFlagIdx + 1] : undefined;
 const BYPASS = bypassArg ?? process.env.YIELDFLOW_BYPASS;
+
+// Subcommands make the CLI a self-contained menu (no browser needed):
+//   --offers            list offers you can start a campaign for
+//   --start <offerId>   start a campaign, print its id + the run command
+//   --list              list campaigns you can run
+const listOffers = args.includes("--offers");
+const listCampaigns = args.includes("--list");
+const startIdx = args.indexOf("--start");
+const startOfferId = startIdx >= 0 ? args[startIdx + 1] : undefined;
+const SUBCOMMAND = listOffers ? "offers" : listCampaigns ? "list" : startIdx >= 0 ? "start" : null;
+
 const positional = args.find(
-  (a) => !a.startsWith("--") && a !== baseArg && a !== bypassArg,
+  (a) => !a.startsWith("--") && a !== baseArg && a !== bypassArg && a !== startOfferId,
 );
 
 // Only needed when hitting a Vercel preview that has Deployment Protection on;
@@ -50,6 +66,47 @@ const authHeaders = BYPASS
 /** True when a response body is an HTML page (login wall, 404 page) not JSON. */
 function looksLikeHtml(body) {
   return /^\s*<(?:!doctype|html)/i.test(body);
+}
+
+/** Guidance shown when an endpoint returns HTML (auth wall / wrong id) not JSON. */
+function htmlWallMessage() {
+  return [
+    "\nThe endpoint returned a web page, not JSON.",
+    "",
+    "Most likely one of:",
+    `  • ${BASE} is a Vercel preview with Deployment Protection (SSO) on —`,
+    "    run YieldFlow locally and point the agent at http://localhost:3000,",
+    "    or turn the protection off / pass --bypass <token> (YIELDFLOW_BYPASS).",
+    "  • the id in the URL is wrong — use a real id from `--offers` / `--list`,",
+    "    not a placeholder like THE_ID.",
+    "",
+    "List what's available:",
+    "  node run.mjs --offers      # offers you can start",
+    "  node run.mjs --list        # campaigns you can run",
+  ].join("\n");
+}
+
+/** Fetch JSON from BASE with the auth headers + a clear HTML/auth-wall guard. */
+async function fetchJson(path, init) {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { ...(init?.headers ?? {}), ...authHeaders },
+  });
+  const body = await res.text();
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    if (looksLikeHtml(body)) {
+      console.error(htmlWallMessage());
+      process.exit(1);
+    }
+    throw new Error(`response wasn't JSON (${BASE}${path}): ${body.slice(0, 200)}`);
+  }
+  if (!res.ok) {
+    throw new Error(data?.error ?? `HTTP ${res.status} (${BASE}${path})`);
+  }
+  return data;
 }
 
 const VAULT_PATH = process.env.YIELDFLOW_VAULT ?? join(homedir(), ".yieldflow", "vault.json");
@@ -74,11 +131,20 @@ const BASE =
   baseArg ??
   process.env.YIELDFLOW_BASE ??
   baseFromInput(positional) ??
-  "https://app.yieldflow.example";
-const campaignId = parseCampaignId(positional);
-if (!campaignId) {
+  "http://localhost:3000";
+const campaignId = SUBCOMMAND ? undefined : parseCampaignId(positional);
+if (!SUBCOMMAND && !campaignId) {
   console.error(
-    "usage: node run.mjs <campaignId | yieldflow://campaign/ID | https://…/campaigns/ID> [--base URL] [--bypass TOKEN] [--dry-run]",
+    [
+      "usage:",
+      "  node run.mjs --offers                       list offers you can start",
+      "  node run.mjs --start <offerId>              start a campaign (prints its id)",
+      "  node run.mjs --list                         list campaigns you can run",
+      "  node run.mjs <campaignId | https://…/campaigns/ID>   run the agent",
+      "",
+      "  flags: [--base URL] [--bypass TOKEN] [--dry-run]",
+      "  base defaults to http://localhost:3000 (set --base / YIELDFLOW_BASE for a deploy)",
+    ].join("\n"),
   );
   process.exit(1);
 }
@@ -153,45 +219,63 @@ async function prefill(page, vault, allowedKeys) {
   return filled;
 }
 
+// --offers: list offers you can start a campaign for.
+async function cmdOffers() {
+  const { offers } = await fetchJson("/api/offers");
+  if (!offers?.length) {
+    console.log("No offers. Run `npm run db:discover` (or `npm run db:seed`) first.");
+    return;
+  }
+  console.log(`Offers (${offers.length}) — start one with:  node run.mjs --start <id>\n`);
+  for (const o of offers) {
+    const bonus = o.bonusAmountCents
+      ? `$${(o.bonusAmountCents / 100).toFixed(0)}`
+      : o.bonusApyBps
+        ? `${(o.bonusApyBps / 100).toFixed(2)}% APY`
+        : "—";
+    const openable = o.webOpenable ? "web ✓" : `${o.applicationChannel ?? "?"} (manual)`;
+    console.log(`${o.id}  ${o.institution} — ${o.title}  |  ${bonus}  |  ${openable}`);
+  }
+}
+
+// --list: list campaigns you can run the agent against.
+async function cmdList() {
+  const { campaigns } = await fetchJson("/api/campaigns");
+  if (!campaigns?.length) {
+    console.log("No campaigns yet. Start one:  node run.mjs --start <offerId>");
+    return;
+  }
+  console.log(`Campaigns (${campaigns.length}) — run one with:  node run.mjs ${BASE}/campaigns/<id>\n`);
+  for (const c of campaigns) {
+    console.log(`${c.id}  ${c.offer.institution} — ${c.offer.title}  [${c.status}]`);
+  }
+}
+
+// --start <offerId>: create a campaign, print its id + the ready-to-run command.
+async function cmdStart(offerId) {
+  if (!offerId) {
+    console.error("usage: node run.mjs --start <offerId>   (get ids from `node run.mjs --offers`)");
+    process.exit(1);
+  }
+  const { campaignId: newId } = await fetchJson("/api/campaigns", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ offerId }),
+  });
+  console.log(
+    [
+      `Started campaign ${newId}`,
+      "",
+      "Run it:",
+      `  node run.mjs ${BASE}/campaigns/${newId} --dry-run   # test the handoff`,
+      `  node run.mjs ${BASE}/campaigns/${newId}             # for real (opens Chrome)`,
+    ].join("\n"),
+  );
+}
+
 async function main() {
   console.log(`Fetching job for campaign ${campaignId} from ${BASE} ...`);
-  const res = await fetch(`${BASE}/api/agent/job/${campaignId}`, {
-    headers: authHeaders,
-  });
-  const body = await res.text();
-
-  // A deployment-protection wall or a 404 page returns HTML — sometimes with a
-  // 200 status — so guard both !res.ok and non-JSON bodies with a clear message
-  // instead of letting JSON.parse throw a cryptic "Unexpected token '<'".
-  if (!res.ok) {
-    const wall = looksLikeHtml(body)
-      ? " — the base looks like it's behind a login / deployment-protection wall"
-      : "";
-    throw new Error(`job fetch failed: HTTP ${res.status} (${BASE})${wall}`);
-  }
-  try {
-    job = JSON.parse(body);
-  } catch {
-    if (looksLikeHtml(body)) {
-      console.error(
-        [
-          "\nThe endpoint returned a web page, not JSON.",
-          "",
-          "Most likely one of:",
-          `  • ${BASE} is a Vercel preview with Deployment Protection (SSO) on —`,
-          "    run YieldFlow locally and point the agent at http://localhost:3000,",
-          "    or turn the protection off / pass --bypass <token> (YIELDFLOW_BYPASS).",
-          `  • the campaign id "${campaignId}" is wrong — use the real id from a started`,
-          "    campaign's URL, not a placeholder like THE_ID.",
-          "",
-          "Start a campaign in the app, then pass its real URL, e.g.:",
-          "  node run.mjs http://localhost:3000/campaigns/<REAL_ID> --dry-run",
-        ].join("\n"),
-      );
-      process.exit(1);
-    }
-    throw new Error(`job response wasn't JSON (${BASE}): ${body.slice(0, 200)}`);
-  }
+  job = await fetchJson(`/api/agent/job/${campaignId}`);
   const vault = loadVault();
 
   // Which fields WOULD be filled from the vault.
@@ -266,7 +350,16 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+const entry =
+  SUBCOMMAND === "offers"
+    ? cmdOffers()
+    : SUBCOMMAND === "list"
+      ? cmdList()
+      : SUBCOMMAND === "start"
+        ? cmdStart(startOfferId)
+        : main();
+
+entry.catch((err) => {
   console.error(String(err));
   process.exit(1);
 });

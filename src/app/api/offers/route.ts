@@ -17,6 +17,10 @@ export async function GET() {
     isTargeted: offer.isTargeted,
     status: offer.status,
     offerEndDate: offer.offerEndDate,
+    applicationChannel: offer.applicationChannel,
+    applicationUrl: offer.applicationUrl,
+    // True when the agent can actually drive this in a browser (vs. app-only).
+    webOpenable: offer.applicationChannel === "web" && !!offer.applicationUrl,
     economics: eligibility
       ? {
           requiredCapitalCents: eligibility.requiredCapitalCents,

@@ -47,13 +47,25 @@ npm run db:reset          # builds local.db + demo data
 npm run dev               # serves http://localhost:3000
 ```
 
-Open http://localhost:3000, click an offer → **Start campaign**, then from
-`agent/`:
+Then drive the whole loop from `agent/` — no browser needed. The base defaults
+to `http://localhost:3000`, so these Just Work locally:
 
 ```bash
-node run.mjs http://localhost:3000/campaigns/<REAL_ID> --dry-run   # test the handoff
-node run.mjs http://localhost:3000/campaigns/<REAL_ID>             # for real (opens Chrome)
+node run.mjs --offers                 # list offers (marks which open in a browser)
+node run.mjs --start <offerId>        # start a campaign → prints its id + run command
+node run.mjs --list                   # list campaigns you can run
+node run.mjs http://localhost:3000/campaigns/<id> --dry-run   # test the handoff
+node run.mjs http://localhost:3000/campaigns/<id>             # for real (opens Chrome)
 ```
+
+`--offers` flags each offer `web ✓` (the agent can drive it) or `… (manual)`
+(app-only / no web form — you open it yourself). Pick a `web ✓` offer to see the
+browser open and pre-fill. You can also start a campaign in the browser and copy
+its id from the URL — same thing.
+
+> The commands hit `http://localhost:3000` by default. Point them at a deploy
+> with `--base <url>` or `YIELDFLOW_BASE` (a protected `vercel.app` preview also
+> needs `--bypass <token>` / `YIELDFLOW_BYPASS`, or just use localhost).
 
 > **Using a `https://…vercel.app` preview instead?** Vercel **Deployment
 > Protection** serves a login page to the agent, so the job fetch gets HTML, not
