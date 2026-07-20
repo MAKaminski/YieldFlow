@@ -101,6 +101,16 @@ export const offer = sqliteTable("offer", {
     .notNull()
     .default(false),
   signupNotes: text("signup_notes"), // bank-specific gotcha (esp. what counts as DD)
+  // Preview scout: a real headless browser visits the application page and
+  // records whether it's a live signup form + the fields the user will face.
+  scoutStatus: text("scout_status", {
+    enum: ["none", "captured", "blocked", "error"],
+  })
+    .notNull()
+    .default("none"),
+  scoutFields: text("scout_fields", { mode: "json" }).$type<string[]>(), // observed field labels
+  scoutScreenshot: text("scout_screenshot"), // small resized data-URI, optional
+  scoutedAt: integer("scouted_at", { mode: "timestamp" }),
   rawDocumentId: text("raw_document_id").references(() => offerRawDocument.id),
   extractionConfidence: real("extraction_confidence"),
   verificationStatus: text("verification_status", {

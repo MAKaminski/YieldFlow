@@ -15,6 +15,13 @@
       "when": 1784519231704,
       "tag": "0001_blue_vapor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784521429007,
+      "tag": "0002_fancy_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

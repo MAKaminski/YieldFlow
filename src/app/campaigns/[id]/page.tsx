@@ -132,6 +132,44 @@ export default async function CampaignCockpit({
                     </p>
                   )}
 
+                  {t.taskType === "open_account" &&
+                    offer.scoutStatus === "captured" && (
+                      <div className="mt-3 rounded-lg border border-accent/30 bg-ink/40 p-3">
+                        <div className="mb-2 flex items-center gap-2 text-xs">
+                          <span className="font-medium text-accent">
+                            Previewed by YieldFlow
+                          </span>
+                          <span className="text-mute">
+                            a browser opened this page — here's what you'll see. Preview
+                            only; you complete identity verification.
+                          </span>
+                        </div>
+                        {offer.scoutScreenshot && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={offer.scoutScreenshot}
+                            alt={`${institution.brandName} application page preview`}
+                            className="mb-2 max-h-64 w-full rounded border border-edge/60 object-cover object-top"
+                          />
+                        )}
+                        {offer.scoutFields && offer.scoutFields.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] uppercase tracking-wide text-mute">
+                              you'll be asked for:
+                            </span>
+                            {offer.scoutFields.map((f) => (
+                              <span
+                                key={f}
+                                className="rounded bg-edge/60 px-1.5 py-0.5 text-[11px] text-slate-200"
+                              >
+                                {f}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                   {(ins?.copyValues?.length ||
                     (link && t.status !== "done") ||
                     t.status === "pending" ||

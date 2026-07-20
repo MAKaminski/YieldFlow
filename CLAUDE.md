@@ -31,6 +31,10 @@ src/lib/orchestration.ts  startCampaign → campaign + task chain + transfer pla
 src/lib/execution/adapter.ts  ExecutionAdapter seam (stub only — no money moves)
 src/db/discovery-data.ts  curated snapshot of ~21 live offers
 src/db/discover.ts   npm run db:discover — ingest + recompute eligibility
+src/lib/discovery/scout.ts  preview scout: real headless browser previews each
+                     application page (npm run db:scout). Note: banks block
+                     headless/datacenter browsers — expect ~all `blocked`; the
+                     cockpit falls back to the verified link + instructions.
 src/app/campaigns/actions.ts  server actions (the app's only write path)
 src/app/…            App Router pages (server components) + /api route handlers
 ```
