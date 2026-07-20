@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCampaignDetail } from "@/lib/queries";
 import { centsToUsd } from "@/lib/yield";
+import { CopyChip } from "../CopyChip";
 import {
   advanceTaskAction,
   approveTransferPlanAction,
@@ -9,6 +10,16 @@ import {
 } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+type TaskInstructions = {
+  title?: string;
+  detail?: string;
+  ctaLabel?: string;
+  url?: string;
+  channel?: "web" | "app" | "branch" | "phone";
+  copyValues?: { label: string; value: string }[];
+  warning?: string;
+};
 
 const TASK_LABEL: Record<string, string> = {
   open_account: "Open the account",
@@ -86,47 +97,81 @@ export default async function CampaignCockpit({
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Action plan</h2>
         <ol className="space-y-2">
-          {tasks.map((t, i) => (
-            <li
-              key={t.id}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-edge/60 bg-panel/60 p-4"
-            >
-              <span className="text-xs text-mute">{i + 1}</span>
-              <span className="flex-1 font-medium">
-                {TASK_LABEL[t.taskType] ?? t.taskType}
-                <span className="ml-2 text-[10px] uppercase tracking-wide text-mute">
-                  {t.automationMode.replace(/_/g, " ")}
-                </span>
-              </span>
-              <span
-                className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                  STATUS_STYLE[t.status] ?? "bg-edge/60 text-mute"
-                }`}
-              >
-                {t.status.replace(/_/g, " ")}
-              </span>
-              {t.userActionUrl && t.status !== "done" && (
-                <a
-                  href={t.userActionUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded border border-accent/50 px-3 py-1 text-xs text-accent hover:bg-accent/10"
+          {tasks.map((t, i) => {
+            const ins = (t.resultJson as { instructions?: TaskInstructions } | null)
+              ?.instructions;
+            const link = ins?.url ?? t.userActionUrl ?? undefined;
+            return (
+              <li
+                  key={t.id}
+                  className="rounded-lg border border-edge/60 bg-panel/60 p-4"
                 >
-                  Open bank ↗
-                </a>
-              )}
-              {(t.status === "pending" || t.status === "awaiting_user") && (
-                <form action={advanceTaskAction.bind(null, t.id, campaign.id)}>
-                  <button
-                    type="submit"
-                    className="rounded bg-accent/90 px-3 py-1 text-xs font-medium text-ink hover:bg-accent"
-                  >
-                    Mark done
-                  </button>
-                </form>
-              )}
-            </li>
-          ))}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-xs text-mute">{i + 1}</span>
+                    <span className="flex-1 font-medium">
+                      {ins?.title ?? TASK_LABEL[t.taskType] ?? t.taskType}
+                      <span className="ml-2 text-[10px] uppercase tracking-wide text-mute">
+                        {t.automationMode.replace(/_/g, " ")}
+                      </span>
+                    </span>
+                    <span
+                      className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                        STATUS_STYLE[t.status] ?? "bg-edge/60 text-mute"
+                      }`}
+                    >
+                      {t.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  {ins?.detail && (
+                    <p className="mt-2 text-sm text-mute">{ins.detail}</p>
+                  )}
+                  {ins?.warning && (
+                    <p className="mt-2 rounded border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+                      ⚠ {ins.warning}
+                    </p>
+                  )}
+
+                  {(ins?.copyValues?.length ||
+                    (link && t.status !== "done") ||
+                    t.status === "pending" ||
+                    t.status === "awaiting_user") && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {ins?.copyValues?.map((cv) => (
+                        <CopyChip key={cv.label} label={cv.label} value={cv.value} />
+                      ))}
+                      {link && t.status !== "done" && (
+                        <a
+                          href={link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded border border-accent/50 px-3 py-1 text-xs text-accent hover:bg-accent/10"
+                        >
+                          {ins?.ctaLabel ?? "Open bank ↗"}
+                        </a>
+                      )}
+                      {t.taskType === "open_account" &&
+                        offer.applicationUrlVerified &&
+                        link && (
+                          <span className="text-[10px] uppercase tracking-wide text-accent">
+                            link verified ✓
+                          </span>
+                        )}
+                      {(t.status === "pending" || t.status === "awaiting_user") && (
+                        <form action={advanceTaskAction.bind(null, t.id, campaign.id)}>
+                          <button
+                            type="submit"
+                            className="rounded bg-accent/90 px-3 py-1 text-xs font-medium text-ink hover:bg-accent"
+                          >
+                            Mark done
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  )}
+                </li>
+            );
+          })}
         </ol>
       </section>
 

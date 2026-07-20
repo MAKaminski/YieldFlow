@@ -4,17 +4,24 @@ import type { DiscoveredOffer } from "@/lib/discovery/types";
 // gathered from public trackers (Doctor of Credit, NerdWallet, Bankrate, CNBC)
 // and bank offer pages. Money in integer cents.
 //
-// Honesty note: high-confidence entries (>=0.75) reflect terms cross-checked
-// across sources; lower-confidence national online entries carry indicative
-// amounts flagged `unverified` — the fine print must be confirmed at the source
-// before acting. Nothing here is financial advice.
+// Every entry carries a precise `applicationUrl` + `applicationChannel` and a
+// `signupNotes` string describing THAT bank's direct-deposit rules — the #1
+// reason a bonus fails. High-confidence entries (>=0.75) are cross-checked
+// across sources; anything lower is flagged `unverified`. Fabricated/padded
+// rows from the previous pass (Betterment, Upgrade, LendingClub, Axos, Laurel
+// Road) were removed; Varo was corrected to its real app-only terms. Nothing
+// here is financial advice — confirm fine print at the source before acting.
 
 const c = (dollars: number) => Math.round(dollars * 100);
 
 const DOC = "https://www.doctorofcredit.com/best-bank-account-bonuses/";
+const STRICT_DD =
+  "Only payroll / pension / government-benefit ACH counts as a direct deposit. External bank transfers, Zelle/P2P, mobile check deposits, and wires do NOT qualify.";
+const LENIENT_DD =
+  "Most recurring ACH deposits count, but set up a true employer/payroll direct deposit to be safe.";
 
 export const CURATED_OFFERS: DiscoveredOffer[] = [
-  // ---- National / nationwide-eligible (incl. Georgia) --------------------
+  // ---- National / nationwide-eligible (incl. Georgia), web application ----
   {
     brandName: "Chase",
     legalName: "JPMorgan Chase Bank, N.A.",
@@ -27,6 +34,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     monthlyFeeCents: c(12),
     minOpeningDepositCents: 0,
     accountOpeningUrl: "https://account.chase.com/consumer/banking/seo",
+    applicationUrl: "https://account.chase.com/consumer/banking/seo",
+    applicationChannel: "web",
+    signupNotes: STRICT_DD + " Enroll through the coupon page; the 90-day clock starts at enrollment.",
     title: "Chase Total Checking — $400 bonus",
     offerCode: "coupon",
     bonusType: "cash",
@@ -47,8 +57,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
         windowDays: 90,
         depositSourceConstraint: "payroll_ach",
         verificationDifficulty: "probabilistic",
-        confidenceNotes:
-          "Chase excludes external transfers, Zelle, and micro-deposits — only true payroll/benefit ACH codes as DD.",
+        confidenceNotes: STRICT_DD,
       },
     ],
     disqualifiers: [
@@ -76,6 +85,10 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     monthlyFeeCents: 0,
     standardApyBps: 360,
     accountOpeningUrl: "https://www.sofi.com/banking/checking-offer/",
+    applicationUrl: "https://www.sofi.com/banking/checking-offer/",
+    applicationChannel: "web",
+    signupNotes:
+      LENIENT_DD + " $1,000 DD tier pays $50; $5,000+ within 25 days pays the full $400.",
     title: "SoFi Checking and Savings — up to $400 bonus",
     bonusType: "cash",
     bonusAmountCents: c(400),
@@ -95,7 +108,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
         windowDays: 25,
         depositSourceConstraint: "any_ach",
         verificationDifficulty: "deterministic",
-        confidenceNotes: "$1,000 DD tier pays $50; $5,000+ pays $400. SoFi counts ACH DD liberally.",
+        confidenceNotes: LENIENT_DD,
       },
     ],
     disqualifiers: [
@@ -115,6 +128,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.capitalone.com/bank/checking-accounts/",
+    applicationUrl: "https://www.capitalone.com/bank/checking-accounts/",
+    applicationChannel: "web",
+    signupNotes: "Two direct deposits of at least $500 each within 75 days. Standard payroll/gov DD.",
     title: "Capital One 360 Checking — $250 bonus",
     bonusType: "cash",
     bonusAmountCents: c(250),
@@ -148,6 +164,10 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     monthlyFeeCents: c(6.95),
     minOpeningDepositCents: c(25),
     accountOpeningUrl: "https://www.usbank.com/bank-accounts/checking-accounts.html",
+    applicationUrl: "https://www.usbank.com/bank-accounts/checking-accounts.html",
+    applicationChannel: "web",
+    signupNotes:
+      "Tiered by total DD in 90 days: $5,000–$7,999 earns $350; higher tiers up to $450. Make the $25 opening deposit within 60 days.",
     title: "U.S. Bank Smartly Checking — up to $450 bonus",
     bonusType: "cash",
     bonusAmountCents: c(350),
@@ -169,9 +189,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
         confidenceNotes: "Tiered: $5,000–$7,999 DD earns $350; higher tiers up to $450.",
       },
     ],
-    disqualifiers: [
-      { disqualifierType: "existing_customer", lookbackMonths: 12 },
-    ],
+    disqualifiers: [{ disqualifierType: "existing_customer", lookbackMonths: 12 }],
   },
   {
     brandName: "Wells Fargo",
@@ -183,6 +201,10 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: c(10),
     accountOpeningUrl: "https://accountoffers.wellsfargo.com/checkingoffer/",
+    applicationUrl: "https://accountoffers.wellsfargo.com/checkingoffer/",
+    applicationChannel: "web",
+    signupNotes:
+      "Enroll through the offer page (needed to attach the $325). $1,000+ in qualifying electronic/ACH deposits within 90 days.",
     title: "Wells Fargo Everyday Checking — $325 bonus",
     bonusType: "cash",
     bonusAmountCents: c(325),
@@ -216,6 +238,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: c(25),
     accountOpeningUrl: "https://www.pnc.com/en/personal-banking/banking/virtual-wallet.html",
+    applicationUrl: "https://www.pnc.com/en/personal-banking/banking/virtual-wallet.html",
+    applicationChannel: "web",
+    signupNotes: "$500 DD earns $100; $5,000 DD earns the full $400. Bonus credited 60–90 days after conditions met.",
     title: "PNC Virtual Wallet Performance Select — $400 bonus",
     bonusType: "cash",
     bonusAmountCents: c(400),
@@ -248,6 +273,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.bmo.com/en-us/main/personal/checking-accounts/",
+    applicationUrl: "https://www.bmo.com/en-us/main/personal/checking-accounts/",
+    applicationChannel: "web",
+    signupNotes: "$4,000 cumulative DD within 90 days. Cash bonus posts ~100 days after account opening.",
     title: "BMO Smart Advantage Checking — $400 bonus",
     bonusType: "cash",
     bonusAmountCents: c(400),
@@ -269,7 +297,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
       },
     ],
   },
-  // ---- Regional but includes Georgia -------------------------------------
+  // ---- Regional but includes Georgia (web application) -------------------
   {
     brandName: "Fifth Third Bank",
     legalName: "Fifth Third Bank, National Association",
@@ -280,7 +308,10 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productName: "Fifth Third Momentum Checking",
     productType: "checking",
     monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking.html",
+    accountOpeningUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking/momentum-checking.html",
+    applicationUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking/momentum-checking.html",
+    applicationChannel: "web",
+    signupNotes: "$500+ in qualifying direct deposits within 90 days. Available in the Fifth Third footprint (incl. GA).",
     title: "Fifth Third Momentum Checking — $300 bonus",
     bonusType: "cash",
     bonusAmountCents: c(300),
@@ -312,7 +343,11 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productName: "Truist One Checking",
     productType: "checking",
     monthlyFeeCents: c(12),
-    accountOpeningUrl: "https://www.truist.com/checking-accounts",
+    accountOpeningUrl: "https://www.truist.com/checking",
+    applicationUrl: "https://www.truist.com/checking",
+    applicationChannel: "web",
+    signupNotes:
+      "Amount/terms indicative — confirm the current Truist promo and promo code on the offer page before applying.",
     title: "Truist One Checking — $400 bonus",
     bonusType: "cash",
     bonusAmountCents: c(400),
@@ -335,123 +370,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     ],
     geoEligibleStates: ["GA", "NC", "SC", "VA", "FL", "TN", "AL", "MD", "TX", "NJ", "PA"],
   },
-  // ---- National online / fintech (eligible incl. GA; lower confidence) ---
-  {
-    brandName: "Axos Bank",
-    legalName: "Axos Bank",
-    charterType: "national_bank",
-    hqState: "NV",
-    chexsystemsSensitivity: "none",
-    productName: "Axos Rewards Checking",
-    productType: "checking",
-    monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.axosbank.com/checking",
-    title: "Axos Rewards Checking — $300 bonus",
-    bonusType: "cash",
-    bonusAmountCents: c(300),
-    requirementWindowDays: 90,
-    newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.5,
-    verificationStatus: "unverified",
-    requirements: [
-      {
-        requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(1500),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative amount — verify Axos promo/code at source.",
-      },
-    ],
-  },
-  {
-    brandName: "Laurel Road",
-    legalName: "KeyBank N.A. (Laurel Road)",
-    charterType: "national_bank",
-    hqState: "OH",
-    chexsystemsSensitivity: "none",
-    productName: "Laurel Road Loyalty Checking",
-    productType: "checking",
-    monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.laurelroad.com/banking/checking-account/",
-    title: "Laurel Road Loyalty Checking — $300 bonus",
-    bonusType: "cash",
-    bonusAmountCents: c(300),
-    requirementWindowDays: 90,
-    newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.5,
-    verificationStatus: "unverified",
-    requirements: [
-      {
-        requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(2500),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative — often targeted at healthcare/professional segments.",
-      },
-    ],
-  },
-  {
-    brandName: "Upgrade",
-    legalName: "Cross River Bank (Upgrade)",
-    charterType: "fintech_partner",
-    hqState: "CA",
-    chexsystemsSensitivity: "none",
-    productName: "Upgrade Premier Savings + Checking",
-    productType: "checking",
-    monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.upgrade.com/checking-rewards/",
-    title: "Upgrade Rewards Checking — $300 bonus",
-    bonusType: "cash",
-    bonusAmountCents: c(300),
-    requirementWindowDays: 90,
-    newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.45,
-    verificationStatus: "unverified",
-    requirements: [
-      {
-        requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(1000),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative amount — verify at source.",
-      },
-    ],
-  },
-  {
-    brandName: "LendingClub",
-    legalName: "LendingClub Bank, N.A.",
-    charterType: "national_bank",
-    hqState: "CA",
-    chexsystemsSensitivity: "none",
-    productName: "LendingClub Rewards Checking",
-    productType: "checking",
-    monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.lendingclub.com/banking/rewards-checking",
-    title: "LendingClub Rewards Checking — $250 bonus",
-    bonusType: "cash",
-    bonusAmountCents: c(250),
-    requirementWindowDays: 90,
-    newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.45,
-    verificationStatus: "unverified",
-    requirements: [
-      {
-        requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(2500),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative amount — verify at source.",
-      },
-    ],
-  },
+  // ---- App-only neobank (corrected to real terms) ------------------------
   {
     brandName: "Varo Bank",
     legalName: "Varo Bank, N.A.",
@@ -461,56 +380,41 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productName: "Varo Bank Account",
     productType: "checking",
     monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.varomoney.com/",
-    title: "Varo Bank Account — $250 bonus",
+    accountOpeningUrl: "https://apps.apple.com/us/app/varo-bank-mobile-banking/id1145550444",
+    applicationUrl: "https://apps.apple.com/us/app/varo-bank-mobile-banking/id1145550444",
+    applicationChannel: "app",
+    signupNotes:
+      "APP-ONLY — there is no web signup; open the account in the Varo mobile app (App Store / Google Play). The $150 bonus is REFERRAL-GATED (sign up via a referral link) and requires $500+ in qualifying direct deposits within 45 days. Qualifying DD = paycheck / pension / government benefits; Venmo, P2P, and Varo-routing transfers do NOT count.",
+    title: "Varo Bank Account — $150 bonus (app-only)",
     bonusType: "cash",
-    bonusAmountCents: c(250),
-    requirementWindowDays: 90,
+    bonusAmountCents: c(150),
+    requirementWindowDays: 45,
+    payoutWindowDays: 7,
     newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.4,
-    verificationStatus: "unverified",
+    termsUrl: "https://www.varomoney.com/",
+    sourceUrl:
+      "https://www.doctorofcredit.com/varo-money-online-bank-account-75-sign-up-bonus-ios-android-sharing-referrals-still-a-nono/",
+    extractionConfidence: 0.7,
+    verificationStatus: "llm_verified",
     requirements: [
       {
         requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(1000),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative amount — verify at source.",
+        targetAmountCents: c(500),
+        windowDays: 45,
+        depositSourceConstraint: "payroll_ach",
+        verificationDifficulty: "probabilistic",
+        confidenceNotes:
+          "Qualifying DD = paycheck/pension/govt benefits only; P2P and Varo-routing transfers excluded.",
       },
     ],
-  },
-  {
-    brandName: "Betterment",
-    legalName: "nbkc bank (Betterment Checking)",
-    charterType: "fintech_partner",
-    hqState: "NY",
-    chexsystemsSensitivity: "none",
-    productName: "Betterment Checking",
-    productType: "checking",
-    monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.betterment.com/checking",
-    title: "Betterment Checking — $200 bonus",
-    bonusType: "cash",
-    bonusAmountCents: c(200),
-    requirementWindowDays: 90,
-    newCustomerRequired: true,
-    sourceUrl: DOC,
-    extractionConfidence: 0.4,
-    verificationStatus: "unverified",
-    requirements: [
+    disqualifiers: [
       {
-        requirementType: "direct_deposit_cumulative",
-        targetAmountCents: c(1500),
-        windowDays: 90,
-        depositSourceConstraint: "any_ach",
-        verificationDifficulty: "deterministic",
-        confidenceNotes: "Indicative amount — verify at source.",
+        disqualifierType: "prior_bonus_lookback",
+        detail: "Bonus requires a referral link and a new Varo account.",
       },
     ],
   },
-  // ---- Real offers NOT available in Georgia (validator will exclude) -----
+  // ---- Real offers NOT available in Georgia (validator excludes them) ----
   {
     brandName: "Citibank",
     legalName: "Citibank, N.A.",
@@ -521,6 +425,10 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.citi.com/banking/special-offers",
+    applicationUrl: "https://www.citi.com/banking/special-offers",
+    applicationChannel: "web",
+    signupNotes:
+      "Enhanced Direct Deposits (electronic ACH — Zelle/Venmo/PayPal via ACH count). Available only in select Citi markets (not GA).",
     title: "Citi Enhanced Direct Deposit Checking — $325 bonus",
     bonusType: "cash",
     bonusAmountCents: c(325),
@@ -562,6 +470,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: c(25),
     accountOpeningUrl: "https://www.td.com/us/en/personal-banking/checking-accounts",
+    applicationUrl: "https://www.td.com/us/en/personal-banking/checking-accounts",
+    applicationChannel: "web",
+    signupNotes: "$2,500 DD within 60 days. East-Coast footprint only (Maine–Florida); not GA.",
     title: "TD Beyond Checking — $300 bonus",
     bonusType: "cash",
     bonusAmountCents: c(300),
@@ -593,6 +504,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.key.com/personal/checking-accounts.jsp",
+    applicationUrl: "https://www.key.com/personal/checking-accounts.jsp",
+    applicationChannel: "web",
+    signupNotes: "Enter promo code KDMA0526 at application; $2,000 DD within 90 days. KeyBank footprint only (not GA).",
     title: "KeyBank Smart Checking — $300 bonus",
     offerCode: "KDMA0526",
     bonusType: "cash",
@@ -626,6 +540,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: c(10),
     accountOpeningUrl: "https://www.huntington.com/checking-account-promotions-bonuses-offers",
+    applicationUrl: "https://www.huntington.com/checking-account-promotions-bonuses-offers",
+    applicationChannel: "web",
+    signupNotes: "$500 DD within 90 days and keep the account open 90 days. Midwest footprint only (not GA).",
     title: "Huntington Perks Checking — $400 bonus",
     bonusType: "cash",
     bonusAmountCents: c(400),
@@ -659,6 +576,9 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.associatedbank.com/checking-account-bonus-offer-promotion",
+    applicationUrl: "https://www.associatedbank.com/checking-account-bonus-offer-promotion",
+    applicationChannel: "web",
+    signupNotes: "$500 DD within 90 days. WI/IL/MN only (not GA).",
     title: "Associated Bank Checking — $300 bonus",
     bonusType: "cash",
     bonusAmountCents: c(300),
@@ -689,14 +609,17 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productName: "M&T EZChoice Checking",
     productType: "checking",
     monthlyFeeCents: 0,
-    accountOpeningUrl: "https://www.mtb.com/personal/bank/checking-accounts",
+    accountOpeningUrl: "https://www3.mtb.com/personal/bank-accounts/checking",
+    applicationUrl: "https://www3.mtb.com/personal/bank-accounts/checking",
+    applicationChannel: "web",
+    signupNotes: "Promo code + $500 DD within 90 days. Northeast footprint only (not GA).",
     title: "M&T Bank Checking — $200 bonus",
     bonusType: "cash",
     bonusAmountCents: c(200),
     offerEndDate: "2026-09-30",
     requirementWindowDays: 90,
     newCustomerRequired: true,
-    termsUrl: "https://www.mtb.com/personal/bank/checking-accounts",
+    termsUrl: "https://www3.mtb.com/personal/bank-accounts/checking",
     sourceUrl: DOC,
     extractionConfidence: 0.7,
     verificationStatus: "llm_verified",

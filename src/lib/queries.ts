@@ -40,8 +40,13 @@ async function getRankedOffersInner() {
       eq(schema.userOfferEligibility.offerId, schema.offer.id),
     );
 
+  // Eligible offers lead; within a group, rank by risk-adjusted score.
+  const eligibleRank = (r: (typeof rows)[number]) =>
+    r.eligibility?.eligibilityStatus === "eligible" ? 1 : 0;
   return rows.sort(
-    (a, b) => (b.eligibility?.rankScore ?? 0) - (a.eligibility?.rankScore ?? 0),
+    (a, b) =>
+      eligibleRank(b) - eligibleRank(a) ||
+      (b.eligibility?.rankScore ?? 0) - (a.eligibility?.rankScore ?? 0),
   );
 }
 

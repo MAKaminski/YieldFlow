@@ -24,7 +24,8 @@ src/db/migrate.ts    applies ./drizzle migrations (run out-of-band, never in bui
 src/db/seed.ts       Regions example end-to-end; idempotent (clear then insert)
 src/lib/yield.ts     pure economics: capitalDays, annualized/after-tax bps, feasibility
 src/lib/queries.ts   read-only Drizzle queries shared by pages + API
-src/lib/discovery/   offer discovery pipeline (types, ingest, provider)
+src/lib/discovery/   offer discovery pipeline (types, ingest, provider, verify-links)
+src/lib/discovery/verify-links.ts  auto-validates each offer's applicationUrl resolves
 src/lib/eligibility.ts  evaluateEligibility + recomputeEligibility (Domain D)
 src/lib/orchestration.ts  startCampaign → campaign + task chain + transfer plan
 src/lib/execution/adapter.ts  ExecutionAdapter seam (stub only — no money moves)

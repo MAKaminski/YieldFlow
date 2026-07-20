@@ -114,6 +114,9 @@ async function insertOfferTree(
       newCustomerRequired: o.newCustomerRequired ?? false,
       customerLookbackMonths: o.customerLookbackMonths,
       termsUrl: o.termsUrl,
+      applicationUrl: o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl,
+      applicationChannel: o.applicationChannel ?? "web",
+      signupNotes: o.signupNotes,
       rawDocumentId: rawDoc.id,
       extractionConfidence: o.extractionConfidence,
       verificationStatus: o.verificationStatus ?? "unverified",
@@ -251,6 +254,9 @@ export async function ingestOffers(
           bonusAmountCents: o.bonusAmountCents,
           extractionConfidence: o.extractionConfidence,
           verificationStatus: o.verificationStatus ?? "unverified",
+          applicationUrl: o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl,
+          applicationChannel: o.applicationChannel ?? "web",
+          signupNotes: o.signupNotes,
           status: "active",
         })
         .where(eq(schema.offer.id, existingOffer[0].id));

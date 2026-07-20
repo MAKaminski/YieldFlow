@@ -89,6 +89,18 @@ export const offer = sqliteTable("offer", {
   customerLookbackMonths: integer("customer_lookback_months"),
   stackableWithOfferIds: jsonStringArray("stackable_with_offer_ids"),
   termsUrl: text("terms_url"),
+  // Precise application entry point + how the user actually applies. Populated
+  // by discovery so the campaign cockpit can deep-link with no room for error.
+  applicationUrl: text("application_url"),
+  applicationChannel: text("application_channel", {
+    enum: ["web", "app", "branch", "phone"],
+  })
+    .notNull()
+    .default("web"),
+  applicationUrlVerified: integer("application_url_verified", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  signupNotes: text("signup_notes"), // bank-specific gotcha (esp. what counts as DD)
   rawDocumentId: text("raw_document_id").references(() => offerRawDocument.id),
   extractionConfidence: real("extraction_confidence"),
   verificationStatus: text("verification_status", {

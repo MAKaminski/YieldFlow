@@ -7,8 +7,15 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const offers = await getRankedOffers();
 
-  const totalExpected = offers.reduce(
+  const eligible = offers.filter(
+    (o) => o.eligibility?.eligibilityStatus === "eligible",
+  );
+  const totalExpected = eligible.reduce(
     (sum, o) => sum + (o.eligibility?.expectedGrossBonusCents ?? 0),
+    0,
+  );
+  const totalCapital = eligible.reduce(
+    (sum, o) => sum + (o.eligibility?.requiredCapitalCents ?? 0),
     0,
   );
 
@@ -23,30 +30,35 @@ export default async function DashboardPage() {
         </p>
       </section>
 
-      <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <Stat label="Active offers" value={String(offers.length)} />
-        <Stat label="Expected bonuses" value={centsToUsd(totalExpected)} />
+        <Stat label="Eligible bonuses" value={centsToUsd(totalExpected)} />
+        <Stat label="Total required capital" value={centsToUsd(totalCapital)} />
         <Stat
           label="Top annualized"
           value={bpsToPercentString(
-            offers[0]?.eligibility?.projectedAnnualizedYieldBps ?? 0,
+            eligible[0]?.eligibility?.projectedAnnualizedYieldBps ?? 0,
           )}
           accent
         />
         <Stat
           label="Top after-tax"
           value={bpsToPercentString(
-            offers[0]?.eligibility?.projectedNetAfterTaxBps ?? 0,
+            eligible[0]?.eligibility?.projectedNetAfterTaxBps ?? 0,
           )}
         />
       </section>
 
       <section className="space-y-3">
-        {offers.map(({ offer, institution, product, eligibility }, i) => (
+        {offers.map(({ offer, institution, product, eligibility }, i) => {
+          const isEligible = eligibility?.eligibilityStatus === "eligible";
+          return (
           <Link
             key={offer.id}
             href={`/offers/${offer.id}`}
-            className="block rounded-xl border border-edge/70 bg-panel/60 p-5 transition hover:border-accent/60 hover:bg-panel"
+            className={`block rounded-xl border border-edge/70 bg-panel/60 p-5 transition hover:border-accent/60 hover:bg-panel ${
+              isEligible ? "" : "opacity-60"
+            }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-1">
@@ -56,6 +68,13 @@ export default async function DashboardPage() {
                   {offer.isTargeted && (
                     <span className="rounded bg-warn/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-warn">
                       targeted
+                    </span>
+                  )}
+                  {!isEligible && (
+                    <span className="rounded bg-danger/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-danger">
+                      {eligibility?.eligibilityStatus === "needs_review"
+                        ? "needs review"
+                        : "not eligible"}
                     </span>
                   )}
                 </div>
@@ -105,7 +124,8 @@ export default async function DashboardPage() {
               </div>
             </div>
           </Link>
-        ))}
+          );
+        })}
         {offers.length === 0 && (
           <p className="rounded-xl border border-edge/70 bg-panel/60 p-6 text-sm text-mute">
             No offers yet. Run <code className="text-accent">npm run db:seed</code>.

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "./index";
 import { curatedProvider } from "../lib/discovery/provider";
 import { ingestOffers } from "../lib/discovery/ingest";
+import { verifyApplicationLinks } from "../lib/discovery/verify-links";
 import { recomputeEligibility } from "../lib/eligibility";
 
 // Run discovery: ingest the curated public-offer snapshot (additive — existing
@@ -23,6 +24,13 @@ async function main() {
     `Discovery: ${result.offersFound} found, ${result.offersNew} new, ` +
       `${result.offersUpdated} updated (dedup-skipped ${result.skipped}).`,
   );
+
+  // Validate every application link resolves (catches dead/homepage links).
+  const links = await verifyApplicationLinks();
+  console.log(`Links: ${links.verified}/${links.checked} verified.`);
+  for (const f of links.failed) {
+    console.log(`  ⚠️  unverified link: ${f.title} → ${f.url ?? "(none)"}`);
+  }
 
   // Ensure the demo user exists + has a home state and a velocity cap.
   const [demo] = await db

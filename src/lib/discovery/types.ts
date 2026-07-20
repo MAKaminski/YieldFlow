@@ -113,6 +113,11 @@ export interface DiscoveredOffer {
   extractionConfidence: number; // 0..1
   verificationStatus?: "unverified" | "llm_verified" | "human_verified" | "disputed";
 
+  // How the user actually applies — drives the cockpit's step-1 deep link.
+  applicationUrl?: string; // precise apply/offer page, or app-store URL for app-only
+  applicationChannel?: "web" | "app" | "branch" | "phone";
+  signupNotes?: string; // bank-specific gotcha, especially what counts as DD
+
   // Requirement tree (flattened into one ALL group) + gates
   requirements: DiscoveredRequirement[];
   disqualifiers?: DiscoveredDisqualifier[];

@@ -1,5 +1,36 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { centsToUsd } from "@/lib/yield";
+
+// A precise, no-room-for-error instruction payload rendered by the cockpit and
+// stored on campaign_task.result_json.
+export interface TaskInstructions {
+  title: string;
+  detail: string;
+  ctaLabel?: string;
+  url?: string;
+  channel?: "web" | "app" | "branch" | "phone";
+  copyValues?: { label: string; value: string }[];
+  warning?: string;
+}
+
+const CTA_BY_CHANNEL: Record<string, string> = {
+  web: "Open application ↗",
+  app: "Get the app ↗",
+  branch: "Find a branch ↗",
+  phone: "Call to open ↗",
+};
+
+const DD_SOURCE_TEXT: Record<string, string> = {
+  payroll_ach: "employer payroll, pension, or government-benefit ACH only (no transfers/Zelle)",
+  govt_benefit_ach: "government-benefit ACH",
+  any_ach: "any recurring ACH deposit (payroll is safest)",
+  external_transfer_ok: "an external transfer is accepted",
+  no_internal_transfer: "an external source — internal transfers do not count",
+};
+
+const fmtDate = (d: Date) =>
+  d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 // Feature 5 — "click yes" campaign orchestration. startCampaign turns an offer
 // into a live campaign: derived dates, per-requirement progress trackers, an
@@ -86,39 +117,109 @@ export async function startCampaign(userId: string, offerId: string): Promise<st
     );
   }
 
-  // --- Ordered task queue (deep-links + approval gates) -----------------
-  // Insert sequentially so each task can block on the previous one.
+  // --- Ordered task queue with precise per-step instructions ------------
+  const applicationUrl = offer.applicationUrl ?? product?.accountOpeningUrl ?? offer.termsUrl ?? undefined;
+  const channel = offer.applicationChannel ?? "web";
+  const minOpen = product?.minOpeningDepositCents ?? 0;
+  const payoutDate = addDays(requirementsDeadline, offer.payoutWindowDays ?? 60);
+
+  // The gating deposit requirement drives the DD instructions.
+  const ddReq = reqRows.find(
+    (r) =>
+      r.requirementType === "direct_deposit_cumulative" ||
+      r.requirementType === "direct_deposit_per_period" ||
+      r.requirementType === "new_money_deposit",
+  );
+  const ddAmount = ddReq?.targetAmountCents ?? 0;
+  const ddWindowDays = ddReq?.windowDays ?? reqWindow;
+  const ddDeadline = addDays(start, ddWindowDays);
+  const ddSourceText =
+    DD_SOURCE_TEXT[ddReq?.depositSourceConstraint ?? "any_ach"] ?? "a qualifying direct deposit";
+
+  const openDetail =
+    channel === "app"
+      ? `${institution.brandName} is app-only — there is no web signup. Download the app and open the account inside it.`
+      : channel === "branch"
+        ? `Open ${product?.productName ?? "the account"} at a ${institution.brandName} branch.`
+        : `Open ${product?.productName ?? "the account"} at ${institution.brandName} online${
+            minOpen ? `. Minimum opening deposit ${centsToUsd(minOpen)}` : ""
+          }.`;
+
   const taskSpecs: {
     taskType: (typeof schema.campaignTask.$inferInsert)["taskType"];
     automationMode: (typeof schema.campaignTask.$inferInsert)["automationMode"];
     dueAt?: Date;
     userActionUrl?: string;
+    instructions: TaskInstructions;
   }[] = [
     {
       taskType: "open_account",
       automationMode: "assisted_handoff",
-      userActionUrl: product?.accountOpeningUrl ?? offer.termsUrl ?? undefined,
+      userActionUrl: applicationUrl,
+      instructions: {
+        title: "Open the account",
+        detail: openDetail,
+        ctaLabel: CTA_BY_CHANNEL[channel],
+        url: applicationUrl,
+        channel,
+        copyValues: offer.offerCode
+          ? [{ label: "Promo code", value: offer.offerCode }]
+          : [],
+        warning: offer.signupNotes ?? undefined,
+      },
     },
-    { taskType: "enroll_estatements", automationMode: "assisted_handoff" },
+    {
+      taskType: "enroll_estatements",
+      automationMode: "assisted_handoff",
+      instructions: {
+        title: "Enroll in online banking + e-statements",
+        detail:
+          "In account settings, turn on online banking and paperless/e-statements — several banks require enrollment to qualify.",
+      },
+    },
     {
       taskType: "initiate_transfer",
       automationMode: "assisted_handoff",
       dueAt: addDays(start, 7),
+      instructions: {
+        title: "Fund the account",
+        detail: `Move about ${centsToUsd(capitalCommittedCents)} in to cover the requirements and any minimum balance.`,
+        warning:
+          "Auto-funding needs a connected account (Feature 4 — backlogged). For now, push the funds yourself from your existing bank.",
+      },
     },
     {
       taskType: "redirect_direct_deposit",
       automationMode: "assisted_handoff",
-      dueAt: addDays(start, 14),
+      dueAt: ddDeadline,
+      instructions: {
+        title: "Set up the qualifying direct deposit",
+        detail:
+          ddAmount > 0
+            ? `Set up a qualifying direct deposit of at least ${centsToUsd(ddAmount)} to arrive within ${ddWindowDays} days (by ${fmtDate(ddDeadline)}). What counts here: ${ddSourceText}.`
+            : `Meet the deposit requirement within ${ddWindowDays} days (by ${fmtDate(ddDeadline)}). What counts here: ${ddSourceText}.`,
+        copyValues: ddAmount > 0 ? [{ label: "DD amount", value: centsToUsd(ddAmount) }] : [],
+        warning: offer.signupNotes ?? undefined,
+      },
     },
     {
       taskType: "confirm_bonus_posted",
       automationMode: "fully_auto",
-      dueAt: addDays(requirementsDeadline, offer.payoutWindowDays ?? 60),
+      dueAt: payoutDate,
+      instructions: {
+        title: "Confirm the bonus posts",
+        detail: `The ${centsToUsd(offer.bonusAmountCents ?? 0)} bonus should post by ${fmtDate(payoutDate)}. We watch for the credit — no action needed unless it's late.`,
+      },
     },
     {
       taskType: "close_account",
       automationMode: "assisted_handoff",
       dueAt: earliestSafeCloseDate,
+      instructions: {
+        title: "Recall funds & close",
+        detail: `On or after ${fmtDate(earliestSafeCloseDate)} (past the clawback window), recall your capital and close the account to stop fees.`,
+        warning: "Closing before that date risks the bank clawing back the bonus.",
+      },
     },
   ];
 
@@ -134,6 +235,7 @@ export async function startCampaign(userId: string, offerId: string): Promise<st
         dueAt: spec.dueAt,
         blockedByTaskId: prevId ?? undefined,
         userActionUrl: spec.userActionUrl,
+        resultJson: { instructions: spec.instructions },
       })
       .returning({ id: schema.campaignTask.id });
     prevId = task.id;
