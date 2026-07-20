@@ -155,10 +155,13 @@ function fit(s, w) {
  * row is { text, o } — `text` has no leading marker (the picker adds ❯ / space).
  */
 function offersTable(offers) {
-  const cols = Math.max(60, (process.stdout.columns || 100) - 2);
+  // Reserve 4 cols: 2 for the picker's "❯ " marker + 2 safety, so a row never
+  // wraps (wrapping corrupts the in-place redraw). Reserve 18 for the widest
+  // badge ("web ⚠ unverified").
+  const cols = Math.max(60, (process.stdout.columns || 100) - 4);
   const bonusW = Math.max(...offers.map((o) => offerBonus(o).length), 5);
-  // name column = whatever's left after index(3) + gaps + bonus + channel(~12)
-  const nameW = Math.max(24, cols - 3 - 2 - bonusW - 2 - 12);
+  const badgeW = 18;
+  const nameW = Math.max(24, cols - 3 - 2 - bonusW - 2 - badgeW);
   const rows = offers.map((o, i) => {
     const idx = String(i + 1).padStart(2);
     const name = fit(`${o.institution} — ${o.title}`, nameW);
@@ -398,6 +401,140 @@ async function prefill(page, vault, allowedKeys) {
   return filled;
 }
 
+// ── Guided click-through ──────────────────────────────────────────────────────
+// Bank "apply" links often land on a marketing page whose real application is a
+// click away (through a ZIP modal, an "Open an account" CTA, etc.). The agent
+// detects the next navigational button, tells the user exactly what it is, and
+// (with consent) clicks it — advancing page by page until the identity/KYC step,
+// where it always stops. It NEVER clicks submit / e-sign / identity actions.
+const ADVANCE_RE =
+  /^(open (an )?account|apply( now| online| today)?|get started|open now|continue|confirm|next|proceed|enroll|start( application)?)\.?$/i;
+const AVOID_RE =
+  /(sign ?in|log ?in|submit|e-?sign|i agree|accept|verify (your )?identity|upload|cancel|close|back)/i;
+// Fields that mean we've reached identity/KYC — stop auto-advancing there.
+const IDENTITY_RE = /ssn|social security|date of birth|\bdob\b|mother'?s maiden|driver'?s license/i;
+
+/** Best "advance to the application" button on the page, or null. */
+async function findAdvanceCta(page) {
+  const els = await page.$$(
+    "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
+  );
+  const cands = [];
+  for (const el of els) {
+    const raw =
+      (await el.innerText().catch(() => "")) ||
+      (await el.getAttribute("value").catch(() => "")) ||
+      (await el.getAttribute("aria-label").catch(() => "")) ||
+      "";
+    const txt = raw.trim().replace(/\s+/g, " ");
+    if (!txt || txt.length > 32) continue;
+    if (AVOID_RE.test(txt)) continue;
+    if (ADVANCE_RE.test(txt)) cands.push({ el, txt });
+  }
+  const rank = (t) =>
+    /open (an )?account|apply/i.test(t) ? 3 : /get started|proceed|start/i.test(t) ? 2 : 1;
+  cands.sort((a, b) => rank(b.txt) - rank(a.txt));
+  return cands[0] ?? null;
+}
+
+/** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
+async function atIdentityStep(page) {
+  const blob = await page
+    .$$eval("label, input", (els) =>
+      els
+        .map(
+          (e) =>
+            e.textContent ||
+            e.getAttribute("aria-label") ||
+            e.getAttribute("name") ||
+            e.getAttribute("placeholder") ||
+            "",
+        )
+        .join(" ")
+        .toLowerCase(),
+    )
+    .catch(() => "");
+  return IDENTITY_RE.test(blob);
+}
+
+/** Ask the user what to do with the next button (TTY). */
+function promptStep() {
+  if (!process.stdin.isTTY) return Promise.resolve("skip");
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(
+      `   ${dim("[Enter] I'll click it · s = I'll click it myself · q = stop advancing")} `,
+      (a) => {
+        rl.close();
+        const t = a.trim().toLowerCase();
+        resolve(t === "q" ? "stop" : t === "s" ? "skip" : "click");
+      },
+    );
+  });
+}
+
+/**
+ * Drive the application forward: prefill → find the next CTA → prompt/click →
+ * repeat, up to MAX steps, stopping at identity/KYC. Returns the active page
+ * (which may be a new tab opened by a click).
+ */
+async function driveSteps(page, vault, job) {
+  const MAX = 6;
+  let cur = page;
+  for (let step = 1; step <= MAX; step++) {
+    const filled = await prefill(cur, vault, job.autofillFields);
+    await snap(cur, `step-${step}`);
+    if (filled) console.log(`Pre-filled ${filled} field(s) on this page.`);
+    if (step === 1) await report("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
+
+    if (await atIdentityStep(cur)) {
+      log("reached identity/KYC step — handing over");
+      console.log(
+        yellow("\n🔒 This is the identity step (SSN/DOB). That's yours — I stop here."),
+      );
+      return cur;
+    }
+
+    const cta = await findAdvanceCta(cur);
+    if (!cta) {
+      log("no advance CTA detected — handing over");
+      break;
+    }
+
+    console.log(`\n👉 Next: click ${bold(`"${cta.txt}"`)} to continue toward the application.`);
+    if (job.offer.offerCode) console.log(dim(`   (remember the promo/offer code: ${job.offer.offerCode})`));
+    log(`advance CTA: "${cta.txt}"`);
+    const choice = await promptStep();
+    if (choice === "stop") {
+      log("user stopped auto-advance");
+      break;
+    }
+    if (choice === "skip") {
+      console.log(dim("Ok — click it yourself; I'll keep the page open."));
+      break;
+    }
+
+    log(`clicking "${cta.txt}"`);
+    const before = cur.url();
+    await cta.el.click().catch((e) => log(`click failed: ${String(e).slice(0, 140)}`));
+    // A click may open a new tab; follow the newest page if so.
+    await cur.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
+    await cur.waitForTimeout(2500);
+    const pages = cur.context().pages();
+    const newest = pages[pages.length - 1];
+    if (newest && newest !== cur) {
+      cur = newest;
+      log("followed a newly-opened tab");
+    }
+    log(`after click: url=${cur.url()} (was ${before}) title="${await cur.title().catch(() => "")}"`);
+  }
+  console.log(
+    "\n->  Over to you: finish anything remaining, complete identity verification, and submit.\n" +
+      "    The browser stays open. Close it when you're done.",
+  );
+  return cur;
+}
+
 // POST a new campaign for an offer; returns the new campaign id.
 async function startCampaignFor(offerId) {
   const { campaignId: newId } = await fetchJson("/api/campaigns", {
@@ -598,24 +735,18 @@ async function main(cid = campaignId) {
     }
     await snap(page, "01-loaded");
 
-    const filled = await prefill(page, vault, job.autofillFields);
-    await snap(page, "02-prefilled");
-    await report("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
-    console.log(`\nPre-filled ${filled} field(s).`);
-    if (job.offer.offerCode) console.log(`Enter promo/offer code: ${job.offer.offerCode}`);
+    // Guide the application forward (prefill → click next → repeat), stopping at
+    // identity/KYC. Returns whatever page/tab we ended on.
+    const active = await driveSteps(page, vault, job);
 
     await report(
       "awaiting_user",
       "open_account",
       "Ready for you: identity verification, any code, and submit.",
     );
-    console.log(
-      "\n->  Over to you: finish identity verification, enter any promo code, and submit.\n" +
-        "    The browser stays open. Close it when you're done.",
-    );
     log("waiting for you to finish (browser open)…");
 
-    await page.waitForEvent("close", { timeout: 0 }).catch(() => {});
+    await active.waitForEvent("close", { timeout: 0 }).catch(() => {});
     log("browser closed by user");
     await report("submitted", "open_account", "User finished the application.");
   } catch (err) {

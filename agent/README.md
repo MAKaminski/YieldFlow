@@ -101,9 +101,17 @@ SSN — the agent never enters that), so review before sharing.
 2. Merges autofill values from your **local vault** (`~/.yieldflow/vault.json`).
 3. Opens your **real Chrome** (`channel: "chrome"`, visible), navigates to the
    application, and pre-fills matching non-identity fields.
-4. **Pauses for you** to do identity verification, any promo code, CAPTCHA, and
+4. **Guides the application forward.** Bank "apply" links often land on a
+   marketing page whose real form is a click away (a ZIP modal, an "Open an
+   account" button…). After pre-filling, the agent finds the next navigational
+   button, tells you exactly what it is (`👉 Next: click "Open an account"`), and
+   — with your consent (Enter to let it click, `s` to click it yourself, `q` to
+   stop) — advances **page by page**, re-filling each one, until it reaches the
+   **identity/KYC step (SSN/DOB), where it always stops.** It never clicks
+   submit, e-sign, or identity actions.
+5. **Pauses for you** to do identity verification, any promo code, CAPTCHA, and
    submit. Reports progress to `POST /api/agent/progress` (the web app shows it).
-5. If a bank blocks the automated browser, it leaves the page open with the
+6. If a bank blocks the automated browser, it leaves the page open with the
    values ready to paste — no evasion.
 
 ## Layout
