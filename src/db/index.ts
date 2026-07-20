@@ -1,9 +1,9 @@
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import * as schema from "./schema";
+import { resolveDbCredentials } from "./env";
 
-const url = process.env.DATABASE_URL ?? "file:local.db";
-const authToken = process.env.DATABASE_AUTH_TOKEN || undefined;
+const { url, authToken } = resolveDbCredentials();
 
 /**
  * libSQL client — a `file:` URL locally, a remote `libsql://` Turso URL in
