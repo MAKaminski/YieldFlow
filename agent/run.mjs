@@ -18,6 +18,9 @@
 //                  or a full https://…/campaigns/<id> URL
 //   --base <url>   deployment base URL (or set YIELDFLOW_BASE)
 //   --dry-run      fetch the job and print the plan, but DON'T open a browser
+//   --bypass <t>   Vercel protection-bypass token (or set YIELDFLOW_BYPASS) —
+//                  only needed against a protected preview URL; running the app
+//                  locally at http://localhost:3000 avoids the auth wall entirely
 //   env YIELDFLOW_VAULT   path to the vault (default ~/.yieldflow/vault.json)
 
 import { readFileSync } from "node:fs";
@@ -28,7 +31,26 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const baseFlagIdx = args.indexOf("--base");
 const baseArg = baseFlagIdx >= 0 ? args[baseFlagIdx + 1] : undefined;
-const positional = args.find((a) => !a.startsWith("--") && a !== baseArg);
+const bypassFlagIdx = args.indexOf("--bypass");
+const bypassArg = bypassFlagIdx >= 0 ? args[bypassFlagIdx + 1] : undefined;
+const BYPASS = bypassArg ?? process.env.YIELDFLOW_BYPASS;
+const positional = args.find(
+  (a) => !a.startsWith("--") && a !== baseArg && a !== bypassArg,
+);
+
+// Only needed when hitting a Vercel preview that has Deployment Protection on;
+// harmless (and unused) against localhost.
+const authHeaders = BYPASS
+  ? {
+      "x-vercel-protection-bypass": BYPASS,
+      "x-vercel-set-bypass-cookie": "true",
+    }
+  : {};
+
+/** True when a response body is an HTML page (login wall, 404 page) not JSON. */
+function looksLikeHtml(body) {
+  return /^\s*<(?:!doctype|html)/i.test(body);
+}
 
 const VAULT_PATH = process.env.YIELDFLOW_VAULT ?? join(homedir(), ".yieldflow", "vault.json");
 
@@ -56,7 +78,7 @@ const BASE =
 const campaignId = parseCampaignId(positional);
 if (!campaignId) {
   console.error(
-    "usage: node run.mjs <campaignId | yieldflow://campaign/ID | https://…/campaigns/ID> [--base URL] [--dry-run]",
+    "usage: node run.mjs <campaignId | yieldflow://campaign/ID | https://…/campaigns/ID> [--base URL] [--bypass TOKEN] [--dry-run]",
   );
   process.exit(1);
 }
@@ -67,7 +89,7 @@ async function report(status, taskType, note) {
   try {
     await fetch(job?.progressUrl ?? `${BASE}/api/agent/progress`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders },
       body: JSON.stringify({ campaignId, taskType, status, note }),
     });
   } catch {
@@ -133,9 +155,43 @@ async function prefill(page, vault, allowedKeys) {
 
 async function main() {
   console.log(`Fetching job for campaign ${campaignId} from ${BASE} ...`);
-  const res = await fetch(`${BASE}/api/agent/job/${campaignId}`);
-  if (!res.ok) throw new Error(`job fetch failed: HTTP ${res.status} (${BASE})`);
-  job = await res.json();
+  const res = await fetch(`${BASE}/api/agent/job/${campaignId}`, {
+    headers: authHeaders,
+  });
+  const body = await res.text();
+
+  // A deployment-protection wall or a 404 page returns HTML — sometimes with a
+  // 200 status — so guard both !res.ok and non-JSON bodies with a clear message
+  // instead of letting JSON.parse throw a cryptic "Unexpected token '<'".
+  if (!res.ok) {
+    const wall = looksLikeHtml(body)
+      ? " — the base looks like it's behind a login / deployment-protection wall"
+      : "";
+    throw new Error(`job fetch failed: HTTP ${res.status} (${BASE})${wall}`);
+  }
+  try {
+    job = JSON.parse(body);
+  } catch {
+    if (looksLikeHtml(body)) {
+      console.error(
+        [
+          "\nThe endpoint returned a web page, not JSON.",
+          "",
+          "Most likely one of:",
+          `  • ${BASE} is a Vercel preview with Deployment Protection (SSO) on —`,
+          "    run YieldFlow locally and point the agent at http://localhost:3000,",
+          "    or turn the protection off / pass --bypass <token> (YIELDFLOW_BYPASS).",
+          `  • the campaign id "${campaignId}" is wrong — use the real id from a started`,
+          "    campaign's URL, not a placeholder like THE_ID.",
+          "",
+          "Start a campaign in the app, then pass its real URL, e.g.:",
+          "  node run.mjs http://localhost:3000/campaigns/<REAL_ID> --dry-run",
+        ].join("\n"),
+      );
+      process.exit(1);
+    }
+    throw new Error(`job response wasn't JSON (${BASE}): ${body.slice(0, 200)}`);
+  }
   const vault = loadVault();
 
   // Which fields WOULD be filled from the vault.

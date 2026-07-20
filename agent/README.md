@@ -34,6 +34,33 @@ you pass a full URL the agent uses its origin as the base automatically (no
 `YIELDFLOW_BASE` needed). Otherwise set `--base <url>` or `YIELDFLOW_BASE`.
 Get the campaign id from the URL after you click **Start campaign** — no `< >`.
 
+### Recommended: run YieldFlow locally, point the agent at localhost
+
+The simplest, friction-free path — a local app has **no login wall**, so the
+agent reaches its job endpoint directly:
+
+```bash
+# from the repo root (one directory up from agent/)
+npm install
+npm run db:reset          # builds local.db + demo data
+# npm run db:discover     # optional: pull in the wider offer set
+npm run dev               # serves http://localhost:3000
+```
+
+Open http://localhost:3000, click an offer → **Start campaign**, then from
+`agent/`:
+
+```bash
+node run.mjs http://localhost:3000/campaigns/<REAL_ID> --dry-run   # test the handoff
+node run.mjs http://localhost:3000/campaigns/<REAL_ID>             # for real (opens Chrome)
+```
+
+> **Using a `https://…vercel.app` preview instead?** Vercel **Deployment
+> Protection** serves a login page to the agent, so the job fetch gets HTML, not
+> JSON. Either turn protection off for the deployment, pass a bypass token
+> (`--bypass <token>` or `YIELDFLOW_BYPASS`), or just use localhost as above. If
+> the agent hits the wall it now tells you exactly this instead of a raw error.
+
 ## What it does
 
 1. Fetches the job from `GET /api/agent/job/<id>` — offer URL, steps, and the

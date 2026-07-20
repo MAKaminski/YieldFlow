@@ -31,6 +31,12 @@ node run.mjs https://<your-domain>/campaigns/THE_CAMPAIGN_ID             # for r
           Each campaign page has a <b>&quot;Run it now&quot;</b> block with the command already filled
           in with the campaign id and this domain.
         </p>
+        <p className="mt-2 text-xs text-mute">
+          Running YieldFlow locally? The campaign URL works with{" "}
+          <code className="text-accent">http://localhost:3000/campaigns/&lt;id&gt;</code> too — a
+          local app has no login wall, so the agent connects with no extra setup. A protected{" "}
+          <code>vercel.app</code> preview needs its Deployment Protection off (or a bypass token).
+        </p>
       </div>
 
       <div className="rounded-xl border border-edge/70 bg-panel/60 p-5 text-sm">
