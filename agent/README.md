@@ -103,12 +103,14 @@ SSN — the agent never enters that), so review before sharing.
    application, and pre-fills matching non-identity fields.
 4. **Guides the application forward.** Bank "apply" links often land on a
    marketing page whose real form is a click away (a ZIP modal, an "Open an
-   account" button…). After pre-filling, the agent finds the next navigational
-   button, tells you exactly what it is (`👉 Next: click "Open an account"`), and
-   — with your consent (Enter to let it click, `s` to click it yourself, `q` to
-   stop) — advances **page by page**, re-filling each one, until it reaches the
-   **identity/KYC step (SSN/DOB), where it always stops.** It never clicks
-   submit, e-sign, or identity actions.
+   account" button…). After pre-filling, the agent lists the candidate
+   next-step buttons and lets you **pick which one to click** (`[Enter]=1 · type
+   1-N · s = I'll click it · q = stop`) — so on a busy page with several
+   look-alike CTAs you choose the right one (e.g. "OPEN NOW"). If a popup/modal
+   is open (ZIP/location gate), it offers that popup's confirm button first. It
+   advances **page by page**, re-filling each, until the **identity/KYC step
+   (SSN/DOB), where it always stops.** It never clicks submit, e-sign, or
+   identity actions.
 5. **Pauses for you** to do identity verification, any promo code, CAPTCHA, and
    submit. Reports progress to `POST /api/agent/progress` (the web app shows it).
 6. If a bank blocks the automated browser, it leaves the page open with the

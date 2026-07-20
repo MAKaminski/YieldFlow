@@ -451,11 +451,13 @@ async function findOpenModal(page) {
 }
 
 /**
- * Best "advance" button. If a gate modal is open, its primary confirm/submit
- * button wins (it submits the field just filled and clears the overlay); only
- * otherwise do we look at page CTAs. Returns { el, txt, inModal } or null.
+ * Ranked list of candidate "advance" buttons (deduped by text, best first). If a
+ * gate modal is open, only its buttons are considered (they submit the field just
+ * filled and clear the overlay); otherwise page CTAs. Ranking is only a *default*
+ * — because a marketing page has many similar CTAs, the user picks from the list.
+ * Returns [{ el, txt, inModal }].
  */
-async function findAdvanceCta(page) {
+async function findAdvanceCtas(page) {
   const modal = await findOpenModal(page);
   const scope = modal ?? page;
   const matchRe = modal ? MODAL_ADVANCE_RE : ADVANCE_RE;
@@ -463,25 +465,31 @@ async function findAdvanceCta(page) {
     "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
   );
   const cands = [];
+  const seen = new Set();
   for (const el of els) {
     const txt = await elText(el);
     if (!txt || txt.length > 32) continue;
     if (AVOID_RE.test(txt)) continue;
     if (!modal && PAGE_AVOID_RE.test(txt)) continue;
-    if (matchRe.test(txt)) cands.push({ el, txt, inModal: !!modal });
+    if (!matchRe.test(txt)) continue;
+    const key = txt.toLowerCase();
+    if (seen.has(key)) continue; // dedupe identical labels (nav + hero + footer)
+    seen.add(key);
+    cands.push({ el, txt, inModal: !!modal });
   }
   const rank = (t) =>
     modal
       ? /confirm|continue|submit|see results|update|yes|ok/i.test(t)
         ? 2
         : 1
-      : /open (an )?account|apply/i.test(t)
+      : /open (an )?account|open now|apply/i.test(t)
         ? 3
         : /get started|proceed|start/i.test(t)
           ? 2
           : 1;
+  // Stable sort by rank desc; DOM order preserved within a rank.
   cands.sort((a, b) => rank(b.txt) - rank(a.txt));
-  return cands[0] ?? null;
+  return cands.slice(0, 6);
 }
 
 /** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
@@ -504,17 +512,24 @@ async function atIdentityStep(page) {
   return IDENTITY_RE.test(blob);
 }
 
-/** Ask the user what to do with the next button (TTY). */
-function promptStep() {
+/**
+ * Ask which candidate button to click (TTY). Returns an index (0-based) to click,
+ * or "skip" / "stop". Enter picks the default (0).
+ */
+function promptChoice(count) {
   if (!process.stdin.isTTY) return Promise.resolve("skip");
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     rl.question(
-      `   ${dim("[Enter] I'll click it · s = I'll click it myself · q = stop advancing")} `,
+      `   ${dim(`[Enter]=1 · type 1-${count} to pick · s = I'll click it myself · q = stop`)} `,
       (a) => {
         rl.close();
         const t = a.trim().toLowerCase();
-        resolve(t === "q" ? "stop" : t === "s" ? "skip" : "click");
+        if (t === "q") return resolve("stop");
+        if (t === "s") return resolve("skip");
+        if (t === "") return resolve(0);
+        const n = Number.parseInt(t, 10);
+        resolve(Number.isInteger(n) && n >= 1 && n <= count ? n - 1 : 0);
       },
     );
   });
@@ -542,19 +557,24 @@ async function driveSteps(page, vault, job) {
       return cur;
     }
 
-    const cta = await findAdvanceCta(cur);
-    if (!cta) {
+    const ctas = await findAdvanceCtas(cur);
+    if (!ctas.length) {
       log("no advance CTA detected — handing over");
       break;
     }
+    log(`candidates: ${ctas.map((c) => `"${c.txt}"`).join(" | ")} inModal=${ctas[0].inModal}`);
 
-    const why = cta.inModal
-      ? "to submit this popup and continue"
-      : "to continue toward the application";
-    console.log(`\n👉 Next: click ${bold(`"${cta.txt}"`)} ${why}.`);
-    if (job.offer.offerCode) console.log(dim(`   (remember the promo/offer code: ${job.offer.offerCode})`));
-    log(`advance CTA: "${cta.txt}" inModal=${cta.inModal}`);
-    const choice = await promptStep();
+    // Don't guess a single button — a marketing page has several look-alike CTAs.
+    // Show the choices and let the user pick the right one (default = best guess).
+    console.log(
+      ctas[0].inModal
+        ? "\n👉 Next — submit this popup. Which button?"
+        : "\n👉 Next — which button opens the application?",
+    );
+    ctas.forEach((c, i) => console.log(`   ${bold(String(i + 1))}) ${c.txt}`));
+    if (job.offer.offerCode) console.log(dim(`   (promo/offer code for later: ${job.offer.offerCode})`));
+
+    const choice = await promptChoice(ctas.length);
     if (choice === "stop") {
       log("user stopped auto-advance");
       break;
@@ -563,8 +583,10 @@ async function driveSteps(page, vault, job) {
       console.log(dim("Ok — click it yourself; I'll keep the page open."));
       break;
     }
+    const cta = ctas[choice];
 
-    log(`clicking "${cta.txt}"`);
+    log(`clicking "${cta.txt}" (choice ${choice + 1})`);
+    console.log(dim(`Clicking "${cta.txt}"…`));
     const before = cur.url();
     await cta.el.click().catch((e) => log(`click failed: ${String(e).slice(0, 140)}`));
     // A click may open a new tab; follow the newest page if so.
