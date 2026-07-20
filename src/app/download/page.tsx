@@ -14,18 +14,31 @@ export default function DownloadPage() {
       </div>
 
       <div className="rounded-xl border border-edge/70 bg-panel/60 p-5 text-sm">
-        <p className="text-mute">
-          Installers are produced from the <code className="text-accent">agent/</code> project in
-          the repo (Tauri). Signed builds aren&apos;t hosted here yet — build locally:
-        </p>
+        <p className="font-medium text-slate-200">Run it now — no install (Node 18+ and Chrome)</p>
+        <p className="mt-1 text-mute">The agent is just a Node script; you don&apos;t need Tauri or Rust to use it.</p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-edge/60 bg-ink/50 p-3 text-xs">
-{`cd agent
+{`git clone https://github.com/MAKaminski/YieldFlow
+cd YieldFlow/agent
 npm install
-npm run tauri build      # -> Windows .exe / macOS .dmg / Linux AppImage`}
+cp vault.example.json ~/.yieldflow/vault.json   # edit with your details
+
+# then, from a campaign page, use the copy-paste command it shows, e.g.
+YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId> --dry-run  # test
+YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId>            # for real`}
         </pre>
         <p className="mt-3 text-xs text-mute">
-          After install, the app registers the <code>yieldflow://</code> link handler, so the
-          &quot;Launch agent&quot; button on a campaign opens it directly.
+          Each campaign page has a <b>&quot;Run it now&quot;</b> block with the command already filled
+          in with the campaign id and this domain.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-edge/70 bg-panel/60 p-5 text-sm">
+        <p className="font-medium text-slate-200">Optional (later): the one-click desktop app</p>
+        <p className="mt-1 text-mute">
+          Packaging into a signed installer that registers the <code>yieldflow://</code> link (so
+          the <b>Launch agent</b> button opens it directly) uses the Tauri project in{" "}
+          <code className="text-accent">agent/desktop/</code>. It needs Rust + the Tauri CLI + a
+          code-signing cert — see <code>agent/README.md</code>.
         </p>
       </div>
 

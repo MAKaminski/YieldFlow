@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getCampaignDetail } from "@/lib/queries";
 import { centsToUsd } from "@/lib/yield";
@@ -55,6 +56,10 @@ export default async function CampaignCockpit({
   const { campaign, offer, institution, tasks, progress, plan, legs } = c;
   const planApproved = !!plan?.approvedByUserAt;
 
+  const h = await headers();
+  const host = h.get("host");
+  const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : "";
+
   return (
     <div className="space-y-8">
       <div>
@@ -94,7 +99,7 @@ export default async function CampaignCockpit({
         gate below — we never take custody of funds.
       </p>
 
-      <AgentLauncher campaignId={campaign.id} />
+      <AgentLauncher campaignId={campaign.id} origin={origin} />
 
       {/* Task queue */}
       <section className="space-y-3">

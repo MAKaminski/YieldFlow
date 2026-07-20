@@ -9,12 +9,24 @@ interface ProgressEvent {
   at?: string | null;
 }
 
-// Launches the local desktop agent via the yieldflow:// protocol and shows live
-// progress it reports back. The agent runs on the user's own machine, pre-fills
-// the application, and pauses for the user to complete identity verification.
-export function AgentLauncher({ campaignId }: { campaignId: string }) {
+// Launches the local desktop agent via the yieldflow:// protocol (once the .exe
+// is installed) and shows live progress it reports back. Also hands the user the
+// exact CLI command so they can run the agent TODAY with no install (Node + the
+// agent/ folder). The agent runs on the user's own machine, pre-fills the
+// application, and pauses for the user to complete identity verification.
+export function AgentLauncher({
+  campaignId,
+  origin,
+}: {
+  campaignId: string;
+  origin: string;
+}) {
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [launched, setLaunched] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const setup = `git clone https://github.com/MAKaminski/YieldFlow && cd YieldFlow/agent && npm install`;
+  const cmd = `YIELDFLOW_BASE=${origin || "https://<your-domain>"} node run.mjs ${campaignId}`;
 
   useEffect(() => {
     if (!launched) return;
@@ -64,6 +76,43 @@ export function AgentLauncher({ campaignId }: { campaignId: string }) {
           </a>
         </div>
       </div>
+
+      {/* Works today, no install: run the agent as a Node CLI. */}
+      <details className="mt-3 border-t border-edge/60 pt-3">
+        <summary className="cursor-pointer text-xs text-mute hover:text-slate-200">
+          Run it now without installing the app (Node + Chrome)
+        </summary>
+        <div className="mt-2 space-y-2">
+          <p className="text-[11px] text-mute">One-time setup:</p>
+          <pre className="overflow-x-auto rounded border border-edge/60 bg-ink/50 p-2 text-[11px]">
+            {setup}
+          </pre>
+          <p className="text-[11px] text-mute">Then, for this campaign:</p>
+          <div className="flex items-start gap-2">
+            <pre className="flex-1 overflow-x-auto rounded border border-edge/60 bg-ink/50 p-2 text-[11px]">
+              {cmd}
+            </pre>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(cmd);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                } catch {
+                  /* clipboard blocked */
+                }
+              }}
+              className="rounded border border-edge/70 px-2 py-1 text-[11px] hover:border-accent/60"
+            >
+              {copied ? "✓" : "Copy"}
+            </button>
+          </div>
+          <p className="text-[11px] text-mute">
+            Add <code>--dry-run</code> first to test the connection without opening a browser.
+          </p>
+        </div>
+      </details>
 
       {launched && (
         <div className="mt-3 border-t border-edge/60 pt-3">

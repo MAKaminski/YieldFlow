@@ -1,88 +1,84 @@
 # YieldFlow Agent (desktop)
 
 The local companion that turns a campaign into an assisted, pre-filled sign-up —
-running on the **user's own machine, in their own browser, with them present**.
-This is the legitimate form of "agentic sign-up": it pre-fills and navigates
-(like a supercharged password manager); it does **not** disguise a bot, spoof
-fingerprints, or evade bank security. The user completes identity verification,
-CAPTCHA, and the final submit.
+running on **your own machine, in your own browser, with you present**. It
+pre-fills and navigates (like a supercharged password manager); it does **not**
+disguise a bot, spoof fingerprints, or evade bank security. You complete identity
+verification, CAPTCHA, and the final submit.
 
-## How it fits together
+## Quickstart — no Tauri, no Rust, no browser download
 
+Prereqs: **Node 18+** and **Google Chrome** installed. That's it.
+
+```bash
+git clone https://github.com/MAKaminski/YieldFlow
+cd YieldFlow/agent
+npm install                                   # installs playwright-core only (light)
+
+# set your autofill data locally (never sent to the cloud)
+mkdir -p ~/.yieldflow
+cp vault.example.json ~/.yieldflow/vault.json # then edit it
+
+# test the handoff without opening a browser:
+YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId> --dry-run
+
+# for real (opens your Chrome, pre-fills, pauses for you to finish):
+YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId>
 ```
-YieldFlow web app (cloud)                     User's machine
-─────────────────────────                     ─────────────
-[Launch agent] button
-   → opens yieldflow://campaign/<id>  ───────▶ Tauri shell (src-tauri/)
-                                                  │ extracts <id>, runs sidecar
-GET /api/agent/job/<id>  ◀───────────────────── sidecar (sidecar/run.mjs)
-   (offer URL, steps, field keys — no PII)        │ fetches job
-                                                  │ loads local vault (~/.yieldflow/vault.json)
-                                                  │ opens the user's real Chrome (headed)
-                                                  │ navigates + pre-fills non-identity fields
-POST /api/agent/progress  ◀───────────────────── │ reports progress (web app shows it live)
-                                                  ▼ PAUSES for the user to do KYC + submit
-```
 
-- **No sensitive data leaves the machine.** The cloud job contains only the
-  offer URL, steps, and the *keys* of fields to fill. Values (name/address, and
-  any identity data) live in the local vault and are merged in on-device.
-- **Graceful fallback.** If a bank blocks even a real headed browser, the agent
-  reports `blocked` and leaves the page open with the values ready to paste.
+Every campaign page in the web app has a **"Run it now"** block with the command
+already filled in with the campaign id and your deployment URL — copy-paste it.
+
+`<campaignId>` can be a bare id, a `yieldflow://campaign/<id>` link, or a full
+`https://…/campaigns/<id>` URL — the agent extracts the id from any of them.
+
+## What it does
+
+1. Fetches the job from `GET /api/agent/job/<id>` — offer URL, steps, and the
+   *keys* of fields to fill. **No SSN/identity ever comes from the cloud.**
+2. Merges autofill values from your **local vault** (`~/.yieldflow/vault.json`).
+3. Opens your **real Chrome** (`channel: "chrome"`, visible), navigates to the
+   application, and pre-fills matching non-identity fields.
+4. **Pauses for you** to do identity verification, any promo code, CAPTCHA, and
+   submit. Reports progress to `POST /api/agent/progress` (the web app shows it).
+5. If a bank blocks the automated browser, it leaves the page open with the
+   values ready to paste — no evasion.
 
 ## Layout
 
 ```
 agent/
-├── sidecar/           Node + Playwright driver (the automation logic)
-│   ├── run.mjs
-│   └── package.json
-├── src-tauri/         Tauri v2 shell (deep-link registration + spawns sidecar)
-│   ├── src/main.rs
-│   ├── Cargo.toml
-│   ├── build.rs
-│   └── tauri.conf.json
-├── ui/                minimal window UI
-└── vault.example.json copy to ~/.yieldflow/vault.json
+├── run.mjs             the CLI (Playwright driver) — this is the whole agent
+├── package.json
+├── vault.example.json  copy to ~/.yieldflow/vault.json
+└── desktop/            OPTIONAL Tauri wrapper (the signed .exe + yieldflow:// launch)
+    ├── src-tauri/
+    └── ui/
 ```
 
-## Build & run (on a real desktop — not producible in CI here)
+## Optional: package into a signed .exe with the one-click link
 
-Prereqs: Rust + Cargo, Node 18+, the [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/),
-and Google Chrome installed (the sidecar drives your real Chrome).
+Only needed if you want the **Launch agent** button to open the app directly via
+`yieldflow://`. This uses the Tauri project in `desktop/` and requires Rust + the
+[Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/):
 
 ```bash
-# 1. Set the vault (never leaves your machine)
-mkdir -p ~/.yieldflow && cp agent/vault.example.json ~/.yieldflow/vault.json  # then edit
+# 1. package the CLI into a platform binary Tauri can bundle
+npm run build:bin        # -> desktop/src-tauri/binaries/yieldflow-sidecar
 
-# 2. Package the Playwright sidecar into a platform binary Tauri can bundle
-cd agent/sidecar && npm install && npm run build:bin
-
-# 3. Point the agent at your deployment, then build the app
-cd ../src-tauri
-export YIELDFLOW_BASE="https://<your-yieldflow-domain>"
-cargo tauri dev            # run locally
-cargo tauri build          # -> Windows .exe (NSIS), macOS .dmg, Linux AppImage
+# 2. build the installer
+cd desktop/src-tauri
+cargo tauri build        # -> Windows .exe (NSIS) / macOS .dmg / Linux AppImage
 ```
 
-Test the sidecar alone (opens Chrome, pre-fills, waits for you):
+**Code signing** is required for a non-scary install: an EV/OV cert on Windows
+(SmartScreen), an Apple Developer ID + notarization on macOS. Tauri's bundler
+supports both — see the Tauri distribution docs. Then host the installers and
+point the web app's `/download` page at them.
 
-```bash
-cd agent/sidecar
-YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId>
-```
+## Boundaries (unchanged)
 
-## Shipping a real installer
-
-- **Code signing is required** for a non-scary install: an EV/OV cert on Windows
-  (SmartScreen) and an Apple Developer ID + notarization on macOS. Tauri's
-  bundler supports both — see the Tauri distribution docs. (This repo can't
-  produce a signed binary; do it on a signing-capable build box / CI.)
-- Host the installers and point the web app's `/download` page at them.
-
-## Boundaries (unchanged from the product's posture)
-
-- Runs on the user's device, in a real session — no stealth, no fingerprint
-  spoofing, no CAPTCHA solving.
-- Pre-fills non-identity fields only; the user does identity verification + submit.
+- Runs on your device, in a real session — no stealth, no fingerprint spoofing,
+  no CAPTCHA solving.
+- Pre-fills non-identity fields only; you do identity verification + submit.
 - Never moves money or takes custody of funds.
