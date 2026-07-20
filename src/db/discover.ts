@@ -1,17 +1,20 @@
 import "dotenv/config";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, lt } from "drizzle-orm";
 import { db, schema } from "./index";
-import { curatedProvider } from "../lib/discovery/provider";
+import { curatedProvider, liveWebProvider } from "../lib/discovery/provider";
 import { ingestOffers } from "../lib/discovery/ingest";
 import { verifyApplicationLinks } from "../lib/discovery/verify-links";
 import { recomputeEligibility } from "../lib/eligibility";
 
-// Run discovery: ingest the curated public-offer snapshot (additive — existing
-// demo data survives), then recompute eligibility for the demo user and print a
-// summary. Run against Turso in prod: `npm run db:discover`.
+// Run discovery: ingest the curated snapshot PLUS any live-extracted offers
+// (additive — existing demo data survives), record field-level changes, expire
+// past-deadline offers, then recompute eligibility. Run against Turso in prod:
+// `npm run db:discover`.
 
 async function main() {
-  const dataset = await curatedProvider.fetch();
+  const curated = await curatedProvider.fetch();
+  const live = await liveWebProvider.fetch(); // [] unless ANTHROPIC_API_KEY set
+  const dataset = [...curated, ...live];
 
   const result = await ingestOffers(dataset, {
     sourceType: "aggregator",
@@ -21,9 +24,24 @@ async function main() {
   });
 
   console.log(
-    `Discovery: ${result.offersFound} found, ${result.offersNew} new, ` +
-      `${result.offersUpdated} updated (dedup-skipped ${result.skipped}).`,
+    `Discovery: ${result.offersFound} found (${curated.length} curated + ${live.length} live), ` +
+      `${result.offersNew} new, ${result.offersUpdated} updated, ` +
+      `${result.offersChanged} field-changes logged.`,
   );
+
+  // Freshness: expire offers whose open-by date has passed.
+  const expired = await db
+    .update(schema.offer)
+    .set({ status: "expired" })
+    .where(
+      and(
+        eq(schema.offer.status, "active"),
+        isNotNull(schema.offer.offerEndDate),
+        lt(schema.offer.offerEndDate, new Date()),
+      ),
+    )
+    .returning({ id: schema.offer.id });
+  if (expired.length) console.log(`Expired ${expired.length} past-deadline offers.`);
 
   // Validate every application link resolves (catches dead/homepage links).
   const links = await verifyApplicationLinks();

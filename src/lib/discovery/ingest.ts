@@ -114,6 +114,8 @@ async function insertOfferTree(
       newCustomerRequired: o.newCustomerRequired ?? false,
       customerLookbackMonths: o.customerLookbackMonths,
       termsUrl: o.termsUrl,
+      affiliateUrl: o.affiliateUrl,
+      affiliateNetwork: o.affiliateNetwork,
       applicationUrl: o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl,
       applicationChannel: o.applicationChannel ?? "web",
       signupNotes: o.signupNotes,
@@ -229,6 +231,7 @@ export async function ingestOffers(
 
   let offersNew = 0;
   let offersUpdated = 0;
+  let offersChanged = 0;
   let skipped = 0;
 
   for (const o of dataset) {
@@ -237,7 +240,12 @@ export async function ingestOffers(
 
     // Dedupe offer by (institutionId, title).
     const existingOffer = await db
-      .select({ id: schema.offer.id })
+      .select({
+        id: schema.offer.id,
+        bonusAmountCents: schema.offer.bonusAmountCents,
+        offerEndDate: schema.offer.offerEndDate,
+        applicationUrl: schema.offer.applicationUrl,
+      })
       .from(schema.offer)
       .where(
         and(
@@ -248,18 +256,48 @@ export async function ingestOffers(
       .limit(1);
 
     if (existingOffer[0]) {
+      const prev = existingOffer[0];
+      const newAppUrl = o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl ?? null;
+      const newEnd = o.offerEndDate ? new Date(o.offerEndDate + "T00:00:00Z") : null;
+
+      // Diff the fields that matter and record each change for auditability.
+      const changes: { field: string; oldValue: unknown; newValue: unknown }[] = [];
+      if ((prev.bonusAmountCents ?? null) !== (o.bonusAmountCents ?? null))
+        changes.push({ field: "bonusAmountCents", oldValue: prev.bonusAmountCents, newValue: o.bonusAmountCents });
+      if ((prev.offerEndDate?.getTime() ?? null) !== (newEnd?.getTime() ?? null))
+        changes.push({ field: "offerEndDate", oldValue: prev.offerEndDate, newValue: newEnd });
+      if ((prev.applicationUrl ?? null) !== newAppUrl)
+        changes.push({ field: "applicationUrl", oldValue: prev.applicationUrl, newValue: newAppUrl });
+
+      if (changes.length) {
+        await db.insert(schema.offerChangeLog).values(
+          changes.map((c) => ({
+            offerId: prev.id,
+            fieldName: c.field,
+            oldValue: c.oldValue,
+            newValue: c.newValue,
+            detectedAt: new Date(),
+            detectedByRunId: run.id,
+          })),
+        );
+        offersChanged += changes.length;
+      }
+
       await db
         .update(schema.offer)
         .set({
           bonusAmountCents: o.bonusAmountCents,
+          offerEndDate: newEnd,
           extractionConfidence: o.extractionConfidence,
           verificationStatus: o.verificationStatus ?? "unverified",
-          applicationUrl: o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl,
+          affiliateUrl: o.affiliateUrl,
+          affiliateNetwork: o.affiliateNetwork,
+          applicationUrl: newAppUrl,
           applicationChannel: o.applicationChannel ?? "web",
           signupNotes: o.signupNotes,
           status: "active",
         })
-        .where(eq(schema.offer.id, existingOffer[0].id));
+        .where(eq(schema.offer.id, prev.id));
       offersUpdated++;
       skipped++; // requirement tree already exists; don't duplicate
       continue;
@@ -279,5 +317,12 @@ export async function ingestOffers(
     })
     .where(eq(schema.offerIngestRun.id, run.id));
 
-  return { runId: run.id, offersFound: dataset.length, offersNew, offersUpdated, skipped };
+  return {
+    runId: run.id,
+    offersFound: dataset.length,
+    offersNew,
+    offersUpdated,
+    offersChanged,
+    skipped,
+  };
 }

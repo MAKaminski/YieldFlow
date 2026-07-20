@@ -17,6 +17,7 @@
     "db:reset": "rm -f local.db && npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
     "@libsql/client": "^0.14.0",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.36.4",

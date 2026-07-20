@@ -38,20 +38,32 @@ export default async function OfferDetailPage({
               {product ? ` · ${product.productName}` : ""} · code {offer.offerCode ?? "—"}
             </p>
           </div>
-          {eligibility?.eligibilityStatus === "ineligible" ? (
-            <span className="rounded-lg border border-edge/60 bg-panel/60 px-4 py-2 text-sm text-mute">
-              Not eligible for this profile
-            </span>
-          ) : (
-            <form action={startCampaignAction.bind(null, offer.id)}>
-              <button
-                type="submit"
-                className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-ink hover:bg-accent/90"
+          <div className="flex items-center gap-2">
+            {(offer.applicationUrl || offer.termsUrl) && (
+              <a
+                href={`/go/${offer.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-edge/60 px-4 py-2.5 text-sm text-slate-200 hover:border-accent/60"
               >
-                Start campaign →
-              </button>
-            </form>
-          )}
+                Open application ↗
+              </a>
+            )}
+            {eligibility?.eligibilityStatus === "ineligible" ? (
+              <span className="rounded-lg border border-edge/60 bg-panel/60 px-4 py-2 text-sm text-mute">
+                Not eligible for this profile
+              </span>
+            ) : (
+              <form action={startCampaignAction.bind(null, offer.id)}>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-ink hover:bg-accent/90"
+                >
+                  Start campaign →
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
 

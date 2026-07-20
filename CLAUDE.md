@@ -26,6 +26,10 @@ src/lib/yield.ts     pure economics: capitalDays, annualized/after-tax bps, feas
 src/lib/queries.ts   read-only Drizzle queries shared by pages + API
 src/lib/discovery/   offer discovery pipeline (types, ingest, provider, verify-links)
 src/lib/discovery/verify-links.ts  auto-validates each offer's applicationUrl resolves
+src/lib/discovery/sources.ts  public offer-list sources for the live extractor
+src/lib/discovery/extract.ts  Anthropic-gated LLM extraction (needs ANTHROPIC_API_KEY)
+src/app/go/[offerId]/route.ts  affiliate/click redirector (logs to audit_log, 302s out)
+src/app/api/discovery/status/route.ts  discovery observability (runs, statuses, changes)
 src/lib/eligibility.ts  evaluateEligibility + recomputeEligibility (Domain D)
 src/lib/orchestration.ts  startCampaign → campaign + task chain + transfer plan
 src/lib/execution/adapter.ts  ExecutionAdapter seam (stub only — no money moves)

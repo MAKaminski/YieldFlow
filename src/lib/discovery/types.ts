@@ -118,6 +118,10 @@ export interface DiscoveredOffer {
   applicationChannel?: "web" | "app" | "branch" | "phone";
   signupNotes?: string; // bank-specific gotcha, especially what counts as DD
 
+  // Monetization: an affiliate/referral link + network, when we have one.
+  affiliateUrl?: string;
+  affiliateNetwork?: string;
+
   // Requirement tree (flattened into one ALL group) + gates
   requirements: DiscoveredRequirement[];
   disqualifiers?: DiscoveredDisqualifier[];
@@ -146,5 +150,6 @@ export interface IngestResult {
   offersFound: number;
   offersNew: number;
   offersUpdated: number;
+  offersChanged: number;
   skipped: number;
 }

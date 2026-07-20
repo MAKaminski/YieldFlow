@@ -89,6 +89,11 @@ export const offer = sqliteTable("offer", {
   customerLookbackMonths: integer("customer_lookback_months"),
   stackableWithOfferIds: jsonStringArray("stackable_with_offer_ids"),
   termsUrl: text("terms_url"),
+  // Affiliate/referral link + network for monetized click-through. Outbound
+  // "Open application" clicks route through /go/[offerId], which swaps this in
+  // when present and logs the click for attribution.
+  affiliateUrl: text("affiliate_url"),
+  affiliateNetwork: text("affiliate_network"),
   // Precise application entry point + how the user actually applies. Populated
   // by discovery so the campaign cockpit can deep-link with no room for error.
   applicationUrl: text("application_url"),

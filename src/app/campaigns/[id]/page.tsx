@@ -180,7 +180,9 @@ export default async function CampaignCockpit({
                       ))}
                       {link && t.status !== "done" && (
                         <a
-                          href={link}
+                          href={
+                            t.taskType === "open_account" ? `/go/${offer.id}` : link
+                          }
                           target="_blank"
                           rel="noreferrer"
                           className="rounded border border-accent/50 px-3 py-1 text-xs text-accent hover:bg-accent/10"

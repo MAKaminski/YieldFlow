@@ -35,8 +35,20 @@ npm run dev                   # http://localhost:3000
 ```
 
 `npm run db:reset` wipes and rebuilds `local.db` from scratch.
-`npm run db:discover` ingests the curated public-offer snapshot (additive) and
-recomputes eligibility for the demo user — the "accumulate offers" step.
+`npm run db:discover` ingests the curated snapshot **plus** any live-extracted
+offers (additive), records field-level changes to `offer_change_log`, expires
+past-deadline offers, and recomputes eligibility. Live extraction fetches public
+offer-list pages (Doctor of Credit / NerdWallet / Bankrate / CNBC) and
+LLM-extracts them — **gated on `ANTHROPIC_API_KEY`**; without a key it no-ops and
+the curated snapshot is the baseline. Only public offer lists are fetched — never
+bank application pages, and no bot-evasion.
+
+**Monetization:** outbound "Open application" clicks route through
+`/go/<offerId>`, which logs the click (to `audit_log`) and 302s to the offer's
+affiliate link when set (`offer.affiliateUrl`), else the plain application URL —
+a compliant affiliate-revenue seam that never touches funds. `GET
+/api/discovery/status` exposes pipeline health (per-source runs, offer counts,
+recent changes).
 
 ## How it works (discovery → eligibility → campaign)
 
