@@ -71,6 +71,19 @@ recent changes).
    **approval-gated** transfer plan (fund + end-of-period recall). Drive it at
    `/campaigns/[id]`.
 
+### Desktop agent (agentic sign-up)
+
+A hosted app can't drive a user's browser or complete KYC, so the "agentic
+sign-up" runs as a local companion (`agent/`, Tauri + Playwright). The cockpit's
+**Launch agent** button opens `yieldflow://campaign/<id>`; the installed agent
+fetches the job (`/api/agent/job/<id>` — offer URL, steps, field *keys*, no PII),
+opens the user's real Chrome, pre-fills non-identity fields from a **local vault**
+(`~/.yieldflow/vault.json`, never sent to the cloud), then pauses for the user to
+complete identity verification and submit, reporting progress to
+`/api/agent/progress`. No stealth, no fingerprint spoofing, no custody — it
+degrades to copy-paste if a bank blocks automation. Build/sign steps in
+[`agent/README.md`](./agent/README.md).
+
 ### Advisory boundary (by design)
 
 YieldFlow never takes custody of funds. Account opening is a deep-link **handoff**

@@ -40,6 +40,12 @@ src/lib/discovery/scout.ts  preview scout: real headless browser previews each
                      headless/datacenter browsers — expect ~all `blocked`; the
                      cockpit falls back to the verified link + instructions.
 src/app/campaigns/actions.ts  server actions (the app's only write path)
+src/lib/agent.ts     builds the desktop-agent job payload (no PII)
+src/app/api/agent/*  job + progress endpoints the local .exe talks to
+agent/               Tauri desktop agent (yieldflow:// launch) + Playwright
+                     sidecar that pre-fills the application on the user's machine;
+                     built into a signed .exe out-of-repo. Runs in the user's
+                     own browser, user completes KYC — no stealth, no custody.
 src/app/…            App Router pages (server components) + /api route handlers
 ```
 

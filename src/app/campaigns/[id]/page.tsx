@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getCampaignDetail } from "@/lib/queries";
 import { centsToUsd } from "@/lib/yield";
 import { CopyChip } from "../CopyChip";
+import { AgentLauncher } from "../AgentLauncher";
 import {
   advanceTaskAction,
   approveTransferPlanAction,
@@ -92,6 +93,8 @@ export default async function CampaignCockpit({
         identity verification and any real money movement stay with you and behind the approval
         gate below — we never take custody of funds.
       </p>
+
+      <AgentLauncher campaignId={campaign.id} />
 
       {/* Task queue */}
       <section className="space-y-3">

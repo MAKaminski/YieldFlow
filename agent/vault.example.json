@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to ~/.yieldflow/vault.json and fill in. This file NEVER leaves your machine. Do not put your SSN here unless you accept it sitting on disk; the agent pauses for you to type identity fields by hand.",
+  "firstName": "Dana",
+  "middleName": "",
+  "lastName": "Demo",
+  "email": "dana@example.com",
+  "phone": "4045551234",
+  "addressLine1": "100 Peachtree St",
+  "addressLine2": "",
+  "city": "Atlanta",
+  "state": "GA",
+  "zip": "30303"
+}
