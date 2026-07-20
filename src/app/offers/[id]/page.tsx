@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOfferDetail } from "@/lib/queries";
 import { bpsToPercentString, centsToUsd } from "@/lib/yield";
+import { startCampaignAction } from "@/app/campaigns/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,29 @@ export default async function OfferDetailPage({
         <Link href="/" className="text-sm text-mute hover:text-slate-100">
           ← All offers
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{offer.title}</h1>
-        <p className="mt-1 text-sm text-mute">
-          {institution.legalName}
-          {product ? ` · ${product.productName}` : ""} · code {offer.offerCode ?? "—"}
-        </p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{offer.title}</h1>
+            <p className="mt-1 text-sm text-mute">
+              {institution.legalName}
+              {product ? ` · ${product.productName}` : ""} · code {offer.offerCode ?? "—"}
+            </p>
+          </div>
+          {eligibility?.eligibilityStatus === "ineligible" ? (
+            <span className="rounded-lg border border-edge/60 bg-panel/60 px-4 py-2 text-sm text-mute">
+              Not eligible for this profile
+            </span>
+          ) : (
+            <form action={startCampaignAction.bind(null, offer.id)}>
+              <button
+                type="submit"
+                className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-ink hover:bg-accent/90"
+              >
+                Start campaign →
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       {/* Economics */}

@@ -35,6 +35,39 @@ npm run dev                   # http://localhost:3000
 ```
 
 `npm run db:reset` wipes and rebuilds `local.db` from scratch.
+`npm run db:discover` ingests the curated public-offer snapshot (additive) and
+recomputes eligibility for the demo user — the "accumulate offers" step.
+
+## How it works (discovery → eligibility → campaign)
+
+1. **Discovery** (`src/lib/discovery/`): a source-agnostic pipeline normalizes
+   offers into the schema (institution → product → offer → AND/OR requirement
+   tree → disqualifiers → geo). `curatedProvider` holds a hand-verified snapshot
+   of ~21 live US checking bonuses (Chase, SoFi, Capital One, PNC, Wells Fargo,
+   Citi, TD, …), each stored with an `extractionConfidence` + `verificationStatus`
+   + source link. `liveWebProvider` is the documented crawler seam (needs an LLM
+   key). Run with `npm run db:discover` or `POST /api/discovery/run`.
+2. **Eligibility** (`src/lib/eligibility.ts`): `evaluateEligibility` applies geo,
+   existing-customer, prior-bonus, and ChexSystems-velocity rules, then computes
+   the capital-days economics via `src/lib/yield.ts`. `recomputeEligibility`
+   materializes `user_offer_eligibility` rows. The demo user is in **GA**, so
+   out-of-footprint offers (Huntington, TD, KeyBank, …) are correctly excluded.
+3. **Campaign cockpit** (Feature 5): click **Start campaign** on any eligible
+   offer → `startCampaign` (`src/lib/orchestration.ts`) creates the campaign, a
+   per-requirement progress tracker, an ordered task chain (open → fund → direct
+   deposit → confirm → **recall funds**) with bank deep-links, and an
+   **approval-gated** transfer plan (fund + end-of-period recall). Drive it at
+   `/campaigns/[id]`.
+
+### Advisory boundary (by design)
+
+YieldFlow never takes custody of funds. Account opening is a deep-link **handoff**
+(identity verification must be completed by the user), and real money movement
+sits behind `transfer_plan.approved_by_user_at` and a stubbed
+`ExecutionAdapter` (`src/lib/execution/adapter.ts`) — it plans and approves, but
+executes nothing until a connected account (see `BACKLOG.md`, Feature 4) + an ACH
+provider are wired. This keeps YieldFlow outside money-transmitter licensing and
+the headless-KYC problem.
 
 ## Pages & API
 
