@@ -8,6 +8,17 @@ export type RankedOffer = Awaited<ReturnType<typeof getRankedOffers>>[number];
 
 /** Offers joined to institution/product and the demo user's eligibility, ranked. */
 export async function getRankedOffers() {
+  try {
+    return await getRankedOffersInner();
+  } catch (err) {
+    // No database wired yet (e.g. Turso env vars not set on Vercel) — render an
+    // empty shell rather than a 500.
+    console.error("getRankedOffers failed:", err);
+    return [];
+  }
+}
+
+async function getRankedOffersInner() {
   const rows = await db
     .select({
       offer: schema.offer,
@@ -33,6 +44,15 @@ export async function getRankedOffers() {
 
 /** Full detail for one offer: requirement tree, disqualifiers, geo, eligibility. */
 export async function getOfferDetail(offerId: string) {
+  try {
+    return await getOfferDetailInner(offerId);
+  } catch (err) {
+    console.error("getOfferDetail failed:", err);
+    return null;
+  }
+}
+
+async function getOfferDetailInner(offerId: string) {
   const [head] = await db
     .select({
       offer: schema.offer,
@@ -87,6 +107,15 @@ export async function getOfferDetail(offerId: string) {
 
 /** Campaigns with their offer + institution and per-requirement progress. */
 export async function getCampaigns() {
+  try {
+    return await getCampaignsInner();
+  } catch (err) {
+    console.error("getCampaigns failed:", err);
+    return [];
+  }
+}
+
+async function getCampaignsInner() {
   const rows = await db
     .select({
       campaign: schema.campaign,
