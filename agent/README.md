@@ -51,12 +51,17 @@ Then drive the whole loop from `agent/` — no browser needed. The base defaults
 to `http://localhost:3000`, so these Just Work locally:
 
 ```bash
+node run.mjs                          # interactive menu: ↑/↓ to pick an offer, Enter to start it
 node run.mjs --offers                 # list offers (marks which open in a browser)
 node run.mjs --start <offerId>        # start a campaign → prints its id + run command
 node run.mjs --list                   # list campaigns you can run
 node run.mjs http://localhost:3000/campaigns/<id> --dry-run   # test the handoff
 node run.mjs http://localhost:3000/campaigns/<id>             # for real (opens Chrome)
 ```
+
+The easiest path is just **`node run.mjs`** with no arguments: it shows an
+arrow-key menu of offers, and pressing Enter starts that campaign and offers to
+open it in Chrome right away.
 
 `--offers` flags each offer `web ✓` (the agent can drive it) or `… (manual)`
 (app-only / no web form — you open it yourself). Pick a `web ✓` offer to see the

@@ -14,6 +14,7 @@
 //   YIELDFLOW_BASE="https://your-yieldflow-domain" node run.mjs <campaignId>
 //
 // Commands:
+//   node run.mjs                     interactive menu — arrow-key pick an offer
 //   node run.mjs --offers            list offers you can start a campaign for
 //   node run.mjs --start <offerId>   start a campaign, print its id + run command
 //   node run.mjs --list              list campaigns you can run
@@ -31,6 +32,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import readline from "node:readline";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -109,6 +111,114 @@ async function fetchJson(path, init) {
   return data;
 }
 
+// ── Pretty output ─────────────────────────────────────────────────────────────
+// ANSI helpers, no-ops when stdout isn't a TTY (so piping stays clean/scriptable).
+const COLOR = process.stdout.isTTY;
+const paint = (code, s) => (COLOR ? `\x1b[${code}m${s}\x1b[0m` : `${s}`);
+const green = (s) => paint("32", s);
+const cyan = (s) => paint("36", s);
+const dim = (s) => paint("2", s);
+const bold = (s) => paint("1", s);
+const inverse = (s) => paint("7", s);
+
+function offerBonus(o) {
+  return o.bonusAmountCents
+    ? `$${(o.bonusAmountCents / 100).toFixed(0)}`
+    : o.bonusApyBps
+      ? `${(o.bonusApyBps / 100).toFixed(2)}% APY`
+      : "—";
+}
+
+/** Fit a string to width `w`: pad with spaces, or truncate with an ellipsis. */
+function fit(s, w) {
+  if (s.length <= w) return s + " ".repeat(w - s.length);
+  return s.slice(0, Math.max(0, w - 1)) + "…";
+}
+
+/**
+ * Build aligned rows for a list of offers. Returns { header, rows } where each
+ * row is { text, o } — `text` has no leading marker (the picker adds ❯ / space).
+ */
+function offersTable(offers) {
+  const cols = Math.max(60, (process.stdout.columns || 100) - 2);
+  const bonusW = Math.max(...offers.map((o) => offerBonus(o).length), 5);
+  // name column = whatever's left after index(3) + gaps + bonus + channel(~12)
+  const nameW = Math.max(24, cols - 3 - 2 - bonusW - 2 - 12);
+  const rows = offers.map((o, i) => {
+    const idx = String(i + 1).padStart(2);
+    const name = fit(`${o.institution} — ${o.title}`, nameW);
+    const bonus = offerBonus(o).padStart(bonusW);
+    const chan = o.webOpenable ? green("web ✓") : dim(`${o.applicationChannel ?? "?"} (manual)`);
+    return { o, text: `${dim(idx)}  ${name}  ${cyan(bonus)}  ${chan}` };
+  });
+  return { rows, nameW, bonusW };
+}
+
+/**
+ * Interactive arrow-key picker over offers. ↑/↓ or k/j to move, Enter to select,
+ * q/Esc/Ctrl-C to cancel. Resolves to the chosen offer, or null if cancelled.
+ * Falls back to null immediately if stdin isn't a TTY (caller handles that).
+ */
+function pickOffer(offers) {
+  if (!process.stdin.isTTY) return Promise.resolve(null);
+  const { rows } = offersTable(offers);
+  let sel = 0;
+  const n = rows.length;
+
+  const draw = (first) => {
+    if (!first) process.stdout.write(`\x1b[${n}A`); // cursor up n lines
+    for (let i = 0; i < n; i++) {
+      const marker = i === sel ? bold(green("❯ ")) : "  ";
+      const line = i === sel ? inverse(rows[i].text) : rows[i].text;
+      process.stdout.write(`\x1b[2K${marker}${line}\n`); // clear line + write
+    }
+  };
+
+  process.stdout.write(
+    bold(`\nPick an offer  `) + dim("(↑/↓ move · Enter select · q cancel)\n\n"),
+  );
+  draw(true);
+
+  return new Promise((resolve) => {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const cleanup = () => {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("keypress", onKey);
+    };
+    const onKey = (str, key) => {
+      if (!key) return;
+      if (key.name === "up" || key.name === "k") sel = (sel - 1 + n) % n;
+      else if (key.name === "down" || key.name === "j") sel = (sel + 1) % n;
+      else if (key.name === "return" || key.name === "enter") {
+        cleanup();
+        process.stdout.write("\n");
+        return resolve(rows[sel].o);
+      } else if (key.name === "q" || key.name === "escape" || (key.ctrl && key.name === "c")) {
+        cleanup();
+        process.stdout.write(dim("\ncancelled\n"));
+        return resolve(null);
+      } else return;
+      draw(false);
+    };
+    process.stdin.on("keypress", onKey);
+  });
+}
+
+/** Simple y/N confirm on a TTY (defaults to No). */
+function confirm(question) {
+  if (!process.stdin.isTTY) return Promise.resolve(false);
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${question} ${dim("(y/N)")} `, (a) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(a.trim()));
+    });
+  });
+}
+
 const VAULT_PATH = process.env.YIELDFLOW_VAULT ?? join(homedir(), ".yieldflow", "vault.json");
 
 /** Accept a bare id, yieldflow://campaign/<id>, or https://…/campaigns/<id>. */
@@ -132,11 +242,14 @@ const BASE =
   process.env.YIELDFLOW_BASE ??
   baseFromInput(positional) ??
   "http://localhost:3000";
-const campaignId = SUBCOMMAND ? undefined : parseCampaignId(positional);
-if (!SUBCOMMAND && !campaignId) {
+// No subcommand and no positional, on a real terminal → interactive menu.
+const wantInteractive = !SUBCOMMAND && !positional && process.stdin.isTTY;
+const campaignId = SUBCOMMAND || wantInteractive ? undefined : parseCampaignId(positional);
+if (!SUBCOMMAND && !wantInteractive && !campaignId) {
   console.error(
     [
       "usage:",
+      "  node run.mjs                                interactive menu (pick an offer)",
       "  node run.mjs --offers                       list offers you can start",
       "  node run.mjs --start <offerId>              start a campaign (prints its id)",
       "  node run.mjs --list                         list campaigns you can run",
@@ -150,13 +263,16 @@ if (!SUBCOMMAND && !campaignId) {
 }
 
 let job;
+// The campaign currently being run — set by main(); lets the interactive picker
+// launch a freshly-started campaign without re-parsing argv.
+let activeCampaignId = campaignId;
 async function report(status, taskType, note) {
   if (dryRun) return;
   try {
     await fetch(job?.progressUrl ?? `${BASE}/api/agent/progress`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders },
-      body: JSON.stringify({ campaignId, taskType, status, note }),
+      body: JSON.stringify({ campaignId: activeCampaignId, taskType, status, note }),
     });
   } catch {
     /* progress is best-effort */
@@ -219,22 +335,28 @@ async function prefill(page, vault, allowedKeys) {
   return filled;
 }
 
-// --offers: list offers you can start a campaign for.
+// POST a new campaign for an offer; returns the new campaign id.
+async function startCampaignFor(offerId) {
+  const { campaignId: newId } = await fetchJson("/api/campaigns", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ offerId }),
+  });
+  return newId;
+}
+
+// --offers: list offers you can start a campaign for (aligned + colored table).
 async function cmdOffers() {
   const { offers } = await fetchJson("/api/offers");
   if (!offers?.length) {
     console.log("No offers. Run `npm run db:discover` (or `npm run db:seed`) first.");
     return;
   }
-  console.log(`Offers (${offers.length}) — start one with:  node run.mjs --start <id>\n`);
-  for (const o of offers) {
-    const bonus = o.bonusAmountCents
-      ? `$${(o.bonusAmountCents / 100).toFixed(0)}`
-      : o.bonusApyBps
-        ? `${(o.bonusApyBps / 100).toFixed(2)}% APY`
-        : "—";
-    const openable = o.webOpenable ? "web ✓" : `${o.applicationChannel ?? "?"} (manual)`;
-    console.log(`${o.id}  ${o.institution} — ${o.title}  |  ${bonus}  |  ${openable}`);
+  console.log(bold(`Offers (${offers.length})`) + dim("   start one with:  node run.mjs --start <id>\n"));
+  const { rows } = offersTable(offers);
+  for (let i = 0; i < rows.length; i++) {
+    // Prefix each with its id so the printed list stays copy-pasteable.
+    console.log(`${dim(offers[i].id)}  ${rows[i].text}`);
   }
 }
 
@@ -245,9 +367,9 @@ async function cmdList() {
     console.log("No campaigns yet. Start one:  node run.mjs --start <offerId>");
     return;
   }
-  console.log(`Campaigns (${campaigns.length}) — run one with:  node run.mjs ${BASE}/campaigns/<id>\n`);
+  console.log(bold(`Campaigns (${campaigns.length})`) + dim(`   run one with:  node run.mjs ${BASE}/campaigns/<id>\n`));
   for (const c of campaigns) {
-    console.log(`${c.id}  ${c.offer.institution} — ${c.offer.title}  [${c.status}]`);
+    console.log(`${dim(c.id)}  ${c.offer.institution} — ${c.offer.title}  ${dim("[" + c.status + "]")}`);
   }
 }
 
@@ -257,14 +379,10 @@ async function cmdStart(offerId) {
     console.error("usage: node run.mjs --start <offerId>   (get ids from `node run.mjs --offers`)");
     process.exit(1);
   }
-  const { campaignId: newId } = await fetchJson("/api/campaigns", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ offerId }),
-  });
+  const newId = await startCampaignFor(offerId);
   console.log(
     [
-      `Started campaign ${newId}`,
+      `Started campaign ${cyan(newId)}`,
       "",
       "Run it:",
       `  node run.mjs ${BASE}/campaigns/${newId} --dry-run   # test the handoff`,
@@ -273,9 +391,47 @@ async function cmdStart(offerId) {
   );
 }
 
-async function main() {
-  console.log(`Fetching job for campaign ${campaignId} from ${BASE} ...`);
-  job = await fetchJson(`/api/agent/job/${campaignId}`);
+// No args on a TTY: pick an offer from the menu → start it → optionally open it.
+async function cmdInteractive() {
+  const { offers } = await fetchJson("/api/offers");
+  if (!offers?.length) {
+    console.log("No offers. Run `npm run db:discover` (or `npm run db:seed`) first.");
+    return;
+  }
+  const chosen = await pickOffer(offers);
+  if (!chosen) return;
+
+  console.log(`${bold(chosen.institution)} — ${chosen.title}`);
+  const newId = await startCampaignFor(chosen.id);
+  console.log(`Started campaign ${cyan(newId)}`);
+
+  if (!chosen.webOpenable) {
+    console.log(
+      dim("This offer is app-only / has no web form — open it yourself; the agent can't drive it."),
+    );
+    console.log(`\nSee the checklist:\n  node run.mjs ${BASE}/campaigns/${newId} --dry-run`);
+    return;
+  }
+
+  const go = await confirm("\nOpen it in Chrome now and pre-fill?");
+  if (go) {
+    await main(newId);
+  } else {
+    console.log(
+      [
+        "",
+        "When ready:",
+        `  node run.mjs ${BASE}/campaigns/${newId} --dry-run   # test`,
+        `  node run.mjs ${BASE}/campaigns/${newId}             # for real (opens Chrome)`,
+      ].join("\n"),
+    );
+  }
+}
+
+async function main(cid = campaignId) {
+  activeCampaignId = cid;
+  console.log(`Fetching job for campaign ${cid} from ${BASE} ...`);
+  job = await fetchJson(`/api/agent/job/${cid}`);
   const vault = loadVault();
 
   // Which fields WOULD be filled from the vault.
@@ -350,8 +506,9 @@ async function main() {
   }
 }
 
-const entry =
-  SUBCOMMAND === "offers"
+const entry = wantInteractive
+  ? cmdInteractive()
+  : SUBCOMMAND === "offers"
     ? cmdOffers()
     : SUBCOMMAND === "list"
       ? cmdList()
