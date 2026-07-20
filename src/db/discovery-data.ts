@@ -309,7 +309,7 @@ export const CURATED_OFFERS: DiscoveredOffer[] = [
     productType: "checking",
     monthlyFeeCents: 0,
     accountOpeningUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking/momentum-checking.html",
-    applicationUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking/momentum-checking.html",
+    applicationUrl: "https://www.53.com/content/fifth-third/en/personal-banking/bank/checking-accounts.html",
     applicationChannel: "web",
     signupNotes: "$500+ in qualifying direct deposits within 90 days. Available in the Fifth Third footprint (incl. GA).",
     title: "Fifth Third Momentum Checking — $300 bonus",

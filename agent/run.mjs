@@ -116,10 +116,19 @@ async function fetchJson(path, init) {
 const COLOR = process.stdout.isTTY;
 const paint = (code, s) => (COLOR ? `\x1b[${code}m${s}\x1b[0m` : `${s}`);
 const green = (s) => paint("32", s);
+const yellow = (s) => paint("33", s);
 const cyan = (s) => paint("36", s);
 const dim = (s) => paint("2", s);
 const bold = (s) => paint("1", s);
 const inverse = (s) => paint("7", s);
+
+/** Channel/verification badge: verified web ✓ · unverified web ⚠ · manual. */
+function offerBadge(o) {
+  if (o.applicationChannel === "web" && o.applicationUrl) {
+    return o.applicationUrlVerified ? green("web ✓") : yellow("web ⚠ unverified");
+  }
+  return dim(`${o.applicationChannel ?? "?"} (manual)`);
+}
 
 function offerBonus(o) {
   return o.bonusAmountCents
@@ -148,8 +157,7 @@ function offersTable(offers) {
     const idx = String(i + 1).padStart(2);
     const name = fit(`${o.institution} — ${o.title}`, nameW);
     const bonus = offerBonus(o).padStart(bonusW);
-    const chan = o.webOpenable ? green("web ✓") : dim(`${o.applicationChannel ?? "?"} (manual)`);
-    return { o, text: `${dim(idx)}  ${name}  ${cyan(bonus)}  ${chan}` };
+    return { o, text: `${dim(idx)}  ${name}  ${cyan(bonus)}  ${offerBadge(o)}` };
   });
   return { rows, nameW, bonusW };
 }
@@ -405,12 +413,21 @@ async function cmdInteractive() {
   const newId = await startCampaignFor(chosen.id);
   console.log(`Started campaign ${cyan(newId)}`);
 
-  if (!chosen.webOpenable) {
+  const isWeb = chosen.applicationChannel === "web" && !!chosen.applicationUrl;
+  if (!isWeb) {
     console.log(
       dim("This offer is app-only / has no web form — open it yourself; the agent can't drive it."),
     );
     console.log(`\nSee the checklist:\n  node run.mjs ${BASE}/campaigns/${newId} --dry-run`);
     return;
+  }
+  if (!chosen.applicationUrlVerified) {
+    console.log(
+      yellow(
+        "\n⚠ Heads up: this bank link failed our resolves-check and may be outdated (e.g. 404).\n" +
+          "  We'll still open it, but if it 404s, go to the bank's site and find this offer.",
+      ),
+    );
   }
 
   const go = await confirm("\nOpen it in Chrome now and pre-fill?");
@@ -441,6 +458,15 @@ async function main(cid = campaignId) {
   console.log(
     `Apply:   ${job.offer.applicationUrl ?? "(app-only / none)"} [${job.offer.applicationChannel}]`,
   );
+  if (
+    job.offer.applicationChannel === "web" &&
+    job.offer.applicationUrl &&
+    !job.offer.applicationUrlVerified
+  ) {
+    console.log(
+      yellow("Link:    ⚠ unverified — may be outdated (e.g. 404). If so, find this offer from the bank's site."),
+    );
+  }
   if (job.offer.offerCode) console.log(`Code:    ${job.offer.offerCode}`);
   if (job.offer.signupNotes) console.log(`Notes:   ${job.offer.signupNotes}`);
   console.log(`Steps:   ${job.steps.map((s) => s.title).join(" → ")}`);

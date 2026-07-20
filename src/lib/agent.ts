@@ -37,6 +37,7 @@ export interface AgentJob {
     brand: string;
     applicationUrl: string | null;
     applicationChannel: string;
+    applicationUrlVerified: boolean;
     offerCode: string | null;
     signupNotes: string | null;
   };
@@ -92,6 +93,7 @@ export async function buildAgentJob(
       brand: head.institution.brandName,
       applicationUrl: head.offer.applicationUrl,
       applicationChannel: head.offer.applicationChannel,
+      applicationUrlVerified: !!head.offer.applicationUrlVerified,
       offerCode: head.offer.offerCode,
       signupNotes: head.offer.signupNotes,
     },

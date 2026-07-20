@@ -19,8 +19,13 @@ export async function GET() {
     offerEndDate: offer.offerEndDate,
     applicationChannel: offer.applicationChannel,
     applicationUrl: offer.applicationUrl,
-    // True when the agent can actually drive this in a browser (vs. app-only).
-    webOpenable: offer.applicationChannel === "web" && !!offer.applicationUrl,
+    applicationUrlVerified: offer.applicationUrlVerified,
+    // True only when the agent can drive this in a browser AND the link is
+    // verified-resolving (so we never steer the user to a dead/404 apply page).
+    webOpenable:
+      offer.applicationChannel === "web" &&
+      !!offer.applicationUrl &&
+      !!offer.applicationUrlVerified,
     economics: eligibility
       ? {
           requiredCapitalCents: eligibility.requiredCapitalCents,
