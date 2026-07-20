@@ -17,14 +17,15 @@ export default function DownloadPage() {
         <p className="font-medium text-slate-200">Run it now — no install (Node 18+ and Chrome)</p>
         <p className="mt-1 text-mute">The agent is just a Node script; you don&apos;t need Tauri or Rust to use it.</p>
         <pre className="mt-3 overflow-x-auto rounded-lg border border-edge/60 bg-ink/50 p-3 text-xs">
-{`git clone https://github.com/MAKaminski/YieldFlow
+{`# main is empty until the PR merges — clone the feature branch
+git clone -b claude/deposit-bonus-harvesting-agent-3fho6a https://github.com/MAKaminski/YieldFlow
 cd YieldFlow/agent
 npm install
-cp vault.example.json ~/.yieldflow/vault.json   # edit with your details
+mkdir -p ~/.yieldflow && cp vault.example.json ~/.yieldflow/vault.json   # edit it
 
-# then, from a campaign page, use the copy-paste command it shows, e.g.
-YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId> --dry-run  # test
-YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId>            # for real`}
+# then, from a campaign page, copy its "Run it now" command (real id + domain), e.g.
+node run.mjs https://<your-domain>/campaigns/THE_CAMPAIGN_ID --dry-run   # test
+node run.mjs https://<your-domain>/campaigns/THE_CAMPAIGN_ID             # for real`}
         </pre>
         <p className="mt-3 text-xs text-mute">
           Each campaign page has a <b>&quot;Run it now&quot;</b> block with the command already filled

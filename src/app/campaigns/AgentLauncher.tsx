@@ -25,8 +25,9 @@ export function AgentLauncher({
   const [launched, setLaunched] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const setup = `git clone https://github.com/MAKaminski/YieldFlow && cd YieldFlow/agent && npm install`;
-  const cmd = `YIELDFLOW_BASE=${origin || "https://<your-domain>"} node run.mjs ${campaignId}`;
+  const setup = `git clone -b claude/deposit-bonus-harvesting-agent-3fho6a https://github.com/MAKaminski/YieldFlow && cd YieldFlow/agent && npm install`;
+  // Pass the full campaign URL so the agent derives the base automatically.
+  const cmd = `node run.mjs ${origin || "https://<your-domain>"}/campaigns/${campaignId}`;
 
   useEffect(() => {
     if (!launched) return;

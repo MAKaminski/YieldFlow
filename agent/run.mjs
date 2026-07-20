@@ -30,7 +30,6 @@ const baseFlagIdx = args.indexOf("--base");
 const baseArg = baseFlagIdx >= 0 ? args[baseFlagIdx + 1] : undefined;
 const positional = args.find((a) => !a.startsWith("--") && a !== baseArg);
 
-const BASE = baseArg ?? process.env.YIELDFLOW_BASE ?? "https://app.yieldflow.example";
 const VAULT_PATH = process.env.YIELDFLOW_VAULT ?? join(homedir(), ".yieldflow", "vault.json");
 
 /** Accept a bare id, yieldflow://campaign/<id>, or https://…/campaigns/<id>. */
@@ -43,6 +42,17 @@ function parseCampaignId(input) {
   return input.trim();
 }
 
+/** If they passed a full https://…/campaigns/<id> URL, use its origin as the base. */
+function baseFromInput(input) {
+  const m = input?.match(/^(https?:\/\/[^/]+)/i);
+  return m ? m[1] : undefined;
+}
+
+const BASE =
+  baseArg ??
+  process.env.YIELDFLOW_BASE ??
+  baseFromInput(positional) ??
+  "https://app.yieldflow.example";
 const campaignId = parseCampaignId(positional);
 if (!campaignId) {
   console.error(

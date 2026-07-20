@@ -11,7 +11,8 @@ verification, CAPTCHA, and the final submit.
 Prereqs: **Node 18+** and **Google Chrome** installed. That's it.
 
 ```bash
-git clone https://github.com/MAKaminski/YieldFlow
+# main is EMPTY until the PR merges — clone the feature branch
+git clone -b claude/deposit-bonus-harvesting-agent-3fho6a https://github.com/MAKaminski/YieldFlow
 cd YieldFlow/agent
 npm install                                   # installs playwright-core only (light)
 
@@ -19,18 +20,19 @@ npm install                                   # installs playwright-core only (l
 mkdir -p ~/.yieldflow
 cp vault.example.json ~/.yieldflow/vault.json # then edit it
 
-# test the handoff without opening a browser:
-YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId> --dry-run
+# test the handoff without opening a browser (paste the FULL campaign URL):
+node run.mjs https://<your-domain>/campaigns/THE_CAMPAIGN_ID --dry-run
 
 # for real (opens your Chrome, pre-fills, pauses for you to finish):
-YIELDFLOW_BASE="https://<your-domain>" node run.mjs <campaignId>
+node run.mjs https://<your-domain>/campaigns/THE_CAMPAIGN_ID
 ```
 
 Every campaign page in the web app has a **"Run it now"** block with the command
-already filled in with the campaign id and your deployment URL — copy-paste it.
-
-`<campaignId>` can be a bare id, a `yieldflow://campaign/<id>` link, or a full
-`https://…/campaigns/<id>` URL — the agent extracts the id from any of them.
+already filled in — copy-paste it. The argument can be a bare id, a
+`yieldflow://campaign/<id>` link, or a full `https://…/campaigns/<id>` URL; if
+you pass a full URL the agent uses its origin as the base automatically (no
+`YIELDFLOW_BASE` needed). Otherwise set `--base <url>` or `YIELDFLOW_BASE`.
+Get the campaign id from the URL after you click **Start campaign** — no `< >`.
 
 ## What it does
 
