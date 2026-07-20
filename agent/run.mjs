@@ -24,18 +24,24 @@
 // Flags:
 //   --base <url>   base URL (or YIELDFLOW_BASE); defaults to http://localhost:3000
 //   --dry-run      fetch the job and print the plan, but DON'T open a browser
+//   --debug        mirror the run log to the console (verbose)
 //   --bypass <t>   Vercel protection-bypass token (or set YIELDFLOW_BYPASS) —
 //                  only needed against a protected preview URL; running the app
 //                  locally at http://localhost:3000 avoids the auth wall entirely
 //   env YIELDFLOW_VAULT   path to the vault (default ~/.yieldflow/vault.json)
+//
+// Every run writes a diagnostics folder to ~/.yieldflow/runs/<timestamp>/
+// (run.log + screenshots + a browser video). Share run.log + the .png files to
+// get help — it records field KEYS and page labels, never your vault values.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, appendFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const debug = args.includes("--debug");
 const baseFlagIdx = args.indexOf("--base");
 const baseArg = baseFlagIdx >= 0 ? args[baseFlagIdx + 1] : undefined;
 const bypassFlagIdx = args.indexOf("--bypass");
@@ -227,6 +233,50 @@ function confirm(question) {
   });
 }
 
+// ── Run recorder ──────────────────────────────────────────────────────────────
+// Each run writes a diagnostics folder the user can share so issues are visible
+// even though the agent runs on their machine, not ours. The log records field
+// KEYS + page labels only — never vault values.
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+function makeRunDir() {
+  const d = new Date();
+  const stamp =
+    `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}` +
+    `-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+  const dir = join(homedir(), ".yieldflow", "runs", stamp);
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    /* fall back to no-dir logging */
+  }
+  return dir;
+}
+let RUN_DIR = null;
+const LOG_FILE = () => (RUN_DIR ? join(RUN_DIR, "run.log") : null);
+function log(line) {
+  const stamped = `[${new Date().toISOString()}] ${line}`;
+  if (debug) console.log(dim(stamped));
+  const f = LOG_FILE();
+  if (f) {
+    try {
+      appendFileSync(f, stamped + "\n");
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+async function snap(page, name) {
+  if (!RUN_DIR || !page) return;
+  try {
+    await page.screenshot({ path: join(RUN_DIR, `${name}.png`) });
+    log(`screenshot: ${name}.png`);
+  } catch (e) {
+    log(`screenshot ${name} failed: ${String(e).slice(0, 120)}`);
+  }
+}
+
 const VAULT_PATH = process.env.YIELDFLOW_VAULT ?? join(homedir(), ".yieldflow", "vault.json");
 
 /** Accept a bare id, yieldflow://campaign/<id>, or https://…/campaigns/<id>. */
@@ -314,6 +364,8 @@ const FIELD_HINTS = {
 
 async function prefill(page, vault, allowedKeys) {
   const inputs = await page.$$("input:visible, select:visible");
+  log(`prefill: ${inputs.length} visible input/select field(s) on the page`);
+  const filledKeys = [];
   let filled = 0;
   for (const el of inputs) {
     const type = (await el.getAttribute("type")) ?? "text";
@@ -331,15 +383,18 @@ async function prefill(page, vault, allowedKeys) {
       if (vault[key] == null) continue;
       if ((FIELD_HINTS[key] ?? []).some((re) => re.test(meta))) {
         try {
-          await el.fill(String(vault[key]));
+          await el.fill(String(vault[key])); // value NEVER logged
           filled++;
+          filledKeys.push(key);
+          log(`  filled "${key}" ← field matched on label "${meta.slice(0, 40)}"`);
         } catch {
-          /* skip un-fillable */
+          log(`  could not fill "${key}" (field not editable)`);
         }
         break;
       }
     }
   }
+  log(`prefill: filled ${filled} field(s) [${filledKeys.join(", ") || "none"}]`);
   return filled;
 }
 
@@ -447,8 +502,15 @@ async function cmdInteractive() {
 
 async function main(cid = campaignId) {
   activeCampaignId = cid;
+  RUN_DIR = makeRunDir();
+  log(`run start — base=${BASE} campaign=${cid} dryRun=${dryRun}`);
   console.log(`Fetching job for campaign ${cid} from ${BASE} ...`);
   job = await fetchJson(`/api/agent/job/${cid}`);
+  log(
+    `job: ${job.offer.brand} — ${job.offer.title} | channel=${job.offer.applicationChannel} ` +
+      `verified=${job.offer.applicationUrlVerified} url=${job.offer.applicationUrl ?? "(none)"}`,
+  );
+  log(`steps: ${job.steps.map((s) => s.title).join(" → ")}`);
   const vault = loadVault();
 
   // Which fields WOULD be filled from the vault.
@@ -476,13 +538,17 @@ async function main(cid = campaignId) {
   console.log(`You do:  ${(job.identityFields ?? []).join(", ")} + CAPTCHA + submit`);
 
   if (dryRun) {
+    log("dry-run: not opening a browser");
     console.log("\n--dry-run: not opening a browser. Handoff looks good.");
+    printRunDir();
     return;
   }
 
   if (job.offer.applicationChannel !== "web" || !job.offer.applicationUrl) {
+    log("not a web application — nothing to drive");
     await report("awaiting_user", "open_account", "App-only or no web form — complete in the app.");
     console.log("\nThis offer isn't a web application; open it yourself. Exiting.");
+    printRunDir();
     return;
   }
 
@@ -493,15 +559,47 @@ async function main(cid = campaignId) {
 
   // Use the user's REAL installed Chrome (channel: 'chrome'), visible — a human
   // is genuinely present. No stealth, no fingerprint spoofing.
-  const browser = await chromium.launch({ headless: false, channel: "chrome" });
-  const context = await browser.newContext();
+  let browser;
+  let context;
+  try {
+    log("launching Chrome (channel: chrome, headed)");
+    browser = await chromium.launch({ headless: false, channel: "chrome" });
+    context = await browser.newContext(
+      RUN_DIR ? { recordVideo: { dir: RUN_DIR } } : {},
+    );
+  } catch (err) {
+    log(`Chrome launch failed: ${String(err).slice(0, 200)}`);
+    console.error(
+      "\nCouldn't launch Google Chrome. Is it installed? (the agent drives your real Chrome).\n" +
+        String(err),
+    );
+    printRunDir();
+    return;
+  }
   const page = await context.newPage();
 
   try {
-    await page.goto(job.offer.applicationUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    log(`navigating to ${job.offer.applicationUrl}`);
+    const resp = await page
+      .goto(job.offer.applicationUrl, { waitUntil: "domcontentloaded", timeout: 45_000 })
+      .catch((e) => {
+        throw e;
+      });
     await page.waitForTimeout(2500);
+    const status = resp ? resp.status() : "?";
+    const title = await page.title().catch(() => "");
+    log(`loaded: status=${status} url=${page.url()} title="${title}"`);
+    // Heuristic bot-wall / error detection (for diagnostics only).
+    if (
+      (typeof status === "number" && status >= 400) ||
+      /just a moment|attention required|access denied|are you a human|verify you are/i.test(title)
+    ) {
+      log(`⚠ likely bot-wall / error page (status=${status}, title="${title}")`);
+    }
+    await snap(page, "01-loaded");
 
     const filled = await prefill(page, vault, job.autofillFields);
+    await snap(page, "02-prefilled");
     await report("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
     console.log(`\nPre-filled ${filled} field(s).`);
     if (job.offer.offerCode) console.log(`Enter promo/offer code: ${job.offer.offerCode}`);
@@ -515,12 +613,16 @@ async function main(cid = campaignId) {
       "\n->  Over to you: finish identity verification, enter any promo code, and submit.\n" +
         "    The browser stays open. Close it when you're done.",
     );
+    log("waiting for you to finish (browser open)…");
 
     await page.waitForEvent("close", { timeout: 0 }).catch(() => {});
+    log("browser closed by user");
     await report("submitted", "open_account", "User finished the application.");
   } catch (err) {
     const msg = String(err);
     const blocked = /ERR_CONNECTION|net::|timeout/i.test(msg);
+    log(`${blocked ? "blocked" : "failed"}: ${msg.slice(0, 300)}`);
+    await snap(page, "error");
     await report(blocked ? "blocked" : "failed", "open_account", msg.slice(0, 180));
     console.error(
       blocked
@@ -528,8 +630,27 @@ async function main(cid = campaignId) {
         : "\n" + msg,
     );
   } finally {
-    await browser.close().catch(() => {});
+    // Close the context first so the video flushes to disk, then the browser.
+    await context?.close().catch(() => {});
+    await browser?.close().catch(() => {});
+    log("run end");
+    printRunDir();
   }
+}
+
+// Tell the user where the diagnostics landed + how to share them.
+function printRunDir() {
+  if (!RUN_DIR) return;
+  console.log(
+    "\n" +
+      dim("────────────────────────────────────────────────────────\n") +
+      `📁 Run recorded: ${bold(RUN_DIR)}\n` +
+      dim(
+        "   Share run.log + the .png screenshots for help diagnosing.\n" +
+          "   (Logs field names only, never your data. Screenshots/video may show\n" +
+          "    pre-filled name/address/email — no SSN — so review before sharing.)",
+      ),
+  );
 }
 
 const entry = wantInteractive

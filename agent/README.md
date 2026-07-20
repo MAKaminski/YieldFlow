@@ -78,6 +78,22 @@ its id from the URL — same thing.
 > (`--bypass <token>` or `YIELDFLOW_BYPASS`), or just use localhost as above. If
 > the agent hits the wall it now tells you exactly this instead of a raw error.
 
+## Every run is recorded (so issues are diagnosable)
+
+Each run writes a diagnostics folder to **`~/.yieldflow/runs/<timestamp>/`**:
+
+- `run.log` — a timestamped step log (base, offer, each page it loaded with the
+  resulting URL + title, bot-wall/error detection, which fields it filled, and
+  the final outcome). It records field **names** and page labels only — **never
+  your vault values**.
+- `01-loaded.png`, `02-prefilled.png`, `error.png` — screenshots at each stage.
+- a `.webm` **video** of the browser session.
+
+If something goes wrong, send the folder's `run.log` + the `.png` files and it's
+easy to see exactly where it stopped. Add **`--debug`** to also stream the log to
+the console. Note: screenshots/video can show pre-filled name/address/email (no
+SSN — the agent never enters that), so review before sharing.
+
 ## What it does
 
 1. Fetches the job from `GET /api/agent/job/<id>` — offer URL, steps, and the
