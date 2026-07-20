@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getRankedOffers } from "@/lib/queries";
-import { bpsToPercentString, centsToUsd } from "@/lib/yield";
+import { bpsToPercentString, centsToUsd, offerDurations } from "@/lib/yield";
 
 export const dynamic = "force-dynamic";
 
@@ -10,11 +10,17 @@ export default async function DashboardPage() {
   const eligible = offers.filter(
     (o) => o.eligibility?.eligibilityStatus === "eligible",
   );
-  const totalExpected = eligible.reduce(
+  // Aggregates cover eligible CASH-bonus offers only — a $0-bonus rate promo
+  // (e.g. a money-market APY) would otherwise inflate "required capital" against
+  // no bonus and make the numbers read wrong.
+  const eligibleCash = eligible.filter(
+    (o) => o.offer.bonusType === "cash" && (o.offer.bonusAmountCents ?? 0) > 0,
+  );
+  const totalExpected = eligibleCash.reduce(
     (sum, o) => sum + (o.eligibility?.expectedGrossBonusCents ?? 0),
     0,
   );
-  const totalCapital = eligible.reduce(
+  const totalCapital = eligibleCash.reduce(
     (sum, o) => sum + (o.eligibility?.requiredCapitalCents ?? 0),
     0,
   );
@@ -31,20 +37,23 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        <Stat label="Active offers" value={String(offers.length)} />
-        <Stat label="Eligible bonuses" value={centsToUsd(totalExpected)} />
-        <Stat label="Total required capital" value={centsToUsd(totalCapital)} />
+        <Stat label={`Eligible bonuses (${eligibleCash.length})`} value={centsToUsd(totalExpected)} />
+        <Stat label="Capital to earn them" value={centsToUsd(totalCapital)} />
+        <Stat
+          label="Bonus ÷ capital"
+          value={totalCapital > 0 ? `${((totalExpected / totalCapital) * 100).toFixed(1)}%` : "—"}
+          accent
+        />
         <Stat
           label="Top annualized"
           value={bpsToPercentString(
-            eligible[0]?.eligibility?.projectedAnnualizedYieldBps ?? 0,
+            eligibleCash[0]?.eligibility?.projectedAnnualizedYieldBps ?? 0,
           )}
-          accent
         />
         <Stat
           label="Top after-tax"
           value={bpsToPercentString(
-            eligible[0]?.eligibility?.projectedNetAfterTaxBps ?? 0,
+            eligibleCash[0]?.eligibility?.projectedNetAfterTaxBps ?? 0,
           )}
         />
       </section>
@@ -52,6 +61,7 @@ export default async function DashboardPage() {
       <section className="space-y-3">
         {offers.map(({ offer, institution, product, eligibility }, i) => {
           const isEligible = eligibility?.eligibilityStatus === "eligible";
+          const { toBonusDays, holdDays } = offerDurations(offer, institution);
           return (
           <Link
             key={offer.id}
@@ -84,6 +94,10 @@ export default async function DashboardPage() {
                   {offer.offerEndDate
                     ? ` · open by ${fmtDate(offer.offerEndDate)}`
                     : ""}
+                </p>
+                <p className="text-xs text-mute">
+                  ⏱ bonus in up to {toBonusDays}d · keep open ~{holdDays}d before
+                  closing (clawback)
                 </p>
               </div>
 

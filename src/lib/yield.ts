@@ -150,6 +150,24 @@ export function bpsToPercentString(bps: number, digits = 1): string {
   return `${(bps / 100).toFixed(digits)}%`;
 }
 
+/**
+ * The two durations that matter for churning:
+ *  - toBonusDays: from account opening to the bonus landing (requirement window
+ *    + payout window) — an upper bound.
+ *  - holdDays: how long the account must stay open before it's safe to close
+ *    without the bonus being clawed back (the early-closure window, at least the
+ *    requirement window).
+ */
+export function offerDurations(
+  offer: { requirementWindowDays: number | null; payoutWindowDays: number | null },
+  institution: { earlyClosureClawbackDays: number | null },
+): { toBonusDays: number; holdDays: number } {
+  const reqWindow = offer.requirementWindowDays ?? 90;
+  const toBonusDays = reqWindow + (offer.payoutWindowDays ?? 0);
+  const holdDays = Math.max(institution.earlyClosureClawbackDays ?? 0, reqWindow);
+  return { toBonusDays, holdDays };
+}
+
 /** Format integer cents as USD, e.g. 40000 -> "$400.00". */
 export function centsToUsd(cents: number): string {
   return (cents / 100).toLocaleString("en-US", {

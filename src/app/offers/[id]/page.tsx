@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOfferDetail } from "@/lib/queries";
-import { bpsToPercentString, centsToUsd } from "@/lib/yield";
+import { bpsToPercentString, centsToUsd, offerDurations } from "@/lib/yield";
 import { startCampaignAction } from "@/app/campaigns/actions";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ export default async function OfferDetailPage({
 
   const { offer, institution, product, eligibility, groupedRequirements, disqualifiers, geo } =
     detail;
+  const { toBonusDays, holdDays } = offerDurations(offer, institution);
 
   return (
     <div className="space-y-8">
@@ -96,6 +97,29 @@ export default async function OfferDetailPage({
           label="After tax"
           value={bpsToPercentString(eligibility?.projectedNetAfterTaxBps ?? 0)}
         />
+      </section>
+
+      {/* Timeline — the two durations that decide whether a bonus is worth it */}
+      <section>
+        <h2 className="mb-3 text-lg font-medium">Timeline</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Stat label="Time to bonus" value={`≤ ${toBonusDays} days`} />
+          <Stat label="Keep open (clawback)" value={`${holdDays} days`} />
+          <Stat
+            label="Requirement window"
+            value={`${offer.requirementWindowDays ?? 90} days`}
+          />
+          <Stat
+            label="Payout window"
+            value={offer.payoutWindowDays ? `${offer.payoutWindowDays} days` : "—"}
+          />
+        </div>
+        <p className="mt-2 text-xs text-mute">
+          Open the account, meet the deposit requirement within the requirement window,
+          and the bonus posts within the payout window (≈{toBonusDays} days total). Keep
+          the account open ~{holdDays} days before closing, or the bank can claw the bonus
+          back.
+        </p>
       </section>
 
       {/* Requirement tree */}
