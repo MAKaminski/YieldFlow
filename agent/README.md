@@ -107,10 +107,13 @@ SSN — the agent never enters that), so review before sharing.
    next-step buttons and lets you **pick which one to click** (`[Enter]=1 · type
    1-N · s = I'll click it · q = stop`) — so on a busy page with several
    look-alike CTAs you choose the right one (e.g. "OPEN NOW"). If a popup/modal
-   is open (ZIP/location gate), it offers that popup's confirm button first. It
-   advances **page by page**, re-filling each, until the **identity/KYC step
-   (SSN/DOB), where it always stops.** It never clicks submit, e-sign, or
-   identity actions.
+   is open (ZIP/location gate), it offers that popup's confirm button first. When
+   a step needs a **choice** (e.g. radio buttons — "bundle a savings account?"),
+   it lists the options and lets you pick, then selects it so the step's Continue
+   works. If a click doesn't advance the page, it stops and hands over rather than
+   looping. It advances **page by page**, re-filling each, until the
+   **identity/KYC step (SSN/DOB), where it always stops.** It never clicks submit,
+   e-sign, or identity actions.
 5. **Pauses for you** to do identity verification, any promo code, CAPTCHA, and
    submit. Reports progress to `POST /api/agent/progress` (the web app shows it).
 6. If a bank blocks the automated browser, it leaves the page open with the

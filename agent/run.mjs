@@ -518,6 +518,48 @@ async function clickByText(page, txt, inModal) {
   return false;
 }
 
+/** Human-readable label for a radio/checkbox input. */
+async function inputLabel(scope, el) {
+  const id = await el.getAttribute("id").catch(() => null);
+  if (id) {
+    const lab = await scope.$(`label[for="${CSS.escape ? CSS.escape(id) : id}"]`).catch(() => null);
+    if (lab) {
+      const t = (await lab.innerText().catch(() => "")).trim();
+      if (t) return t.replace(/\s+/g, " ").slice(0, 70);
+    }
+  }
+  const aria = await el.getAttribute("aria-label").catch(() => null);
+  if (aria) return aria.trim().slice(0, 70);
+  const t = await el
+    .evaluate((node) => {
+      const lab = node.closest("label");
+      if (lab && lab.textContent.trim()) return lab.textContent.trim();
+      const sib = node.nextElementSibling || node.parentElement?.nextElementSibling;
+      return sib ? sib.textContent.trim() : "";
+    })
+    .catch(() => "");
+  return (t || "option").replace(/\s+/g, " ").slice(0, 70);
+}
+
+/**
+ * Unselected radio groups on the current step — these usually block progress
+ * (e.g. "choose an account option"). Returns [{ name, options:[{el,label}] }].
+ * The user picks, because it's a real choice (bundle a savings account?, etc.).
+ */
+async function findChoiceGroups(scope) {
+  const radios = await scope.$$("input[type='radio']:visible");
+  const byName = new Map();
+  for (const el of radios) {
+    const name = (await el.getAttribute("name").catch(() => null)) || "(unnamed)";
+    const checked = await el.isChecked().catch(() => false);
+    if (!byName.has(name)) byName.set(name, { name, options: [], anyChecked: false });
+    const g = byName.get(name);
+    g.options.push({ el, label: await inputLabel(scope, el) });
+    if (checked) g.anyChecked = true;
+  }
+  return [...byName.values()].filter((g) => g.options.length >= 2 && !g.anyChecked);
+}
+
 /** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
 async function atIdentityStep(page) {
   const blob = await page
@@ -584,6 +626,33 @@ async function driveSteps(page, vault, job) {
       );
       return cur;
     }
+
+    // A wizard step may require a CHOICE (e.g. "bundle a savings account?") before
+    // its Continue works. Detect unselected radio groups and let the user pick.
+    const scopeForChoice = (await findOpenModal(cur)) ?? cur;
+    const groups = await findChoiceGroups(scopeForChoice);
+    let handedOver = false;
+    for (const g of groups) {
+      console.log("\n🔘 This step needs a choice — which option?");
+      g.options.forEach((o, i) => console.log(`   ${bold(String(i + 1))}) ${o.label}`));
+      const pick = await promptChoice(g.options.length);
+      if (pick === "stop" || pick === "skip") {
+        console.log(
+          yellow("\n⏸  Ok — make the selection in the browser and continue there; I'll wait."),
+        );
+        handedOver = true;
+        break;
+      }
+      const opt = g.options[pick];
+      log(`selecting radio "${opt.label}"`);
+      console.log(dim(`Selecting "${opt.label}"…`));
+      await opt.el.check({ timeout: 5000 }).catch(async () => {
+        await opt.el.click({ timeout: 5000 }).catch((e) => log(`radio select failed: ${String(e).slice(0, 120)}`));
+      });
+      stuck = 0; // making a selection is progress
+      await cur.waitForTimeout(400);
+    }
+    if (handedOver) break;
 
     const ctas = await findAdvanceCtas(cur);
     if (!ctas.length) {
