@@ -492,6 +492,32 @@ async function findAdvanceCtas(page) {
   return cands.slice(0, 6);
 }
 
+/**
+ * Click a button by its visible text, re-located FRESH at click time (the user
+ * prompt can take seconds, during which a modal re-renders and any handle we held
+ * goes stale → "Element is not attached to the DOM"). Returns true if clicked.
+ */
+async function clickByText(page, txt, inModal) {
+  const modal = inModal ? await findOpenModal(page) : null;
+  const scope = modal ?? page;
+  const els = await scope.$$(
+    "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
+  );
+  for (const el of els) {
+    if ((await elText(el)).toLowerCase() === txt.toLowerCase()) {
+      try {
+        await el.click({ timeout: 8000 });
+        return true;
+      } catch (e) {
+        log(`click failed: ${String(e).slice(0, 140)}`);
+        return false;
+      }
+    }
+  }
+  log(`could not re-locate "${txt}" to click`);
+  return false;
+}
+
 /** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
 async function atIdentityStep(page) {
   const blob = await page
@@ -541,8 +567,10 @@ function promptChoice(count) {
  * (which may be a new tab opened by a click).
  */
 async function driveSteps(page, vault, job) {
-  const MAX = 6;
+  const MAX = 8;
   let cur = page;
+  let lastSig = null; // state we last acted on — to detect "click did nothing"
+  let stuck = 0;
   for (let step = 1; step <= MAX; step++) {
     const filled = await prefill(cur, vault, job.autofillFields);
     await snap(cur, `step-${step}`);
@@ -562,9 +590,30 @@ async function driveSteps(page, vault, job) {
       log("no advance CTA detected — handing over");
       break;
     }
+
+    // Signature of the current state. If it matches the state we just acted on,
+    // the previous click changed nothing → the flow needs the user's input.
+    const sig = `${cur.url()}::${ctas.map((c) => c.txt.toLowerCase()).sort().join("|")}`;
+    if (sig === lastSig) {
+      stuck++;
+      if (ctas.length === 1 || stuck >= 2) {
+        log(`no progress after last click (stuck=${stuck}) — handing over`);
+        console.log(
+          yellow(
+            "\n⏸  This step didn't advance — the bank's flow needs your input here.\n" +
+              "    Take it from here in the browser; I'll wait. (This is the multi-step\n" +
+              "    account form — your choices + identity verification are yours to complete.)",
+          ),
+        );
+        break;
+      }
+      console.log(yellow("↻ That didn't advance the page — pick a different option, or s to take over."));
+    } else {
+      stuck = 0;
+    }
     log(`candidates: ${ctas.map((c) => `"${c.txt}"`).join(" | ")} inModal=${ctas[0].inModal}`);
 
-    // Don't guess a single button — a marketing page has several look-alike CTAs.
+    // Don't guess a single button — a page can have several look-alike CTAs.
     // Show the choices and let the user pick the right one (default = best guess).
     console.log(
       ctas[0].inModal
@@ -587,8 +636,10 @@ async function driveSteps(page, vault, job) {
 
     log(`clicking "${cta.txt}" (choice ${choice + 1})`);
     console.log(dim(`Clicking "${cta.txt}"…`));
+    lastSig = sig;
     const before = cur.url();
-    await cta.el.click().catch((e) => log(`click failed: ${String(e).slice(0, 140)}`));
+    // Re-locate the button by text at click time so a stale handle can't fail.
+    const ok = await clickByText(cur, cta.txt, cta.inModal);
     // A click may open a new tab; follow the newest page if so.
     await cur.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
     await cur.waitForTimeout(2500);
@@ -598,7 +649,7 @@ async function driveSteps(page, vault, job) {
       cur = newest;
       log("followed a newly-opened tab");
     }
-    log(`after click: url=${cur.url()} (was ${before}) title="${await cur.title().catch(() => "")}"`);
+    log(`after click: ok=${ok} url=${cur.url()} (was ${before}) title="${await cur.title().catch(() => "")}"`);
   }
   console.log(
     "\n->  Over to you: finish anything remaining, complete identity verification, and submit.\n" +
