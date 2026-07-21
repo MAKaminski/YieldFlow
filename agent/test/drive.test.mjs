@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
-import { driveSteps } from "../run.mjs";
+import { driveSteps, atIdentityStep } from "../run.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => pathToFileURL(join(HERE, "fixtures", name)).href;
@@ -132,6 +132,26 @@ async function main() {
       );
       assert(events.includes("confirm"), "clicked the continuously re-rendered CONFIRM button");
       assert(atIdentity, "advanced past the stale gate to the identity step");
+    });
+
+    console.log("Cookie-consent banner (must not be mistaken for the app gate):");
+    await withPage(browser, fixture("cookie.html"), async (page) => {
+      await driveSteps(page, VAULT, JOB, opts(chooser(["open now"])));
+      const events = await page.evaluate(() => window.__events);
+      const atIdentity = await page.evaluate(
+        () => !document.getElementById("identity").classList.contains("hidden"),
+      );
+      assert(events.includes("cookie-accept"), "accepted/dismissed the cookie banner");
+      assert(!events.includes("cookie-reject"), "did not click 'Reject All'");
+      assert(events.includes("open-now"), "then reached and clicked the real OPEN NOW CTA");
+      assert(atIdentity, "advanced to the identity step (banner didn't cause a handover)");
+    });
+
+    console.log("New-tab CTA (agent follows the opened tab):");
+    await withPage(browser, fixture("newtab.html"), async (page) => {
+      const active = await driveSteps(page, VAULT, JOB, opts(chooser(["open an account"])));
+      assert(active.url().includes("newtab-app.html"), "followed the CTA into the new tab");
+      assert(await atIdentityStep(active), "stopped at the identity step in the new tab");
     });
   } finally {
     await browser.close();

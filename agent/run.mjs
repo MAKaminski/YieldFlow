@@ -423,6 +423,38 @@ const AVOID_RE =
 const PAGE_AVOID_RE = /submit/i;
 // Fields that mean we've reached identity/KYC — stop auto-advancing there.
 const IDENTITY_RE = /ssn|social security|date of birth|\bdob\b|mother'?s maiden|driver'?s license/i;
+// A cookie/consent banner — accepting one is benign and clears the overlay so the
+// real application gate is reachable. Detected by container text, dismissed by
+// its accept button (never mistaken for the app gate).
+const CONSENT_RE = /cookie|consent|gdpr|privacy|tracking preference/i;
+const CONSENT_ACCEPT_RE = /^(accept|agree|allow|got it|ok|okay|i understand|enable|continue)/i;
+
+/** Dismiss a cookie/consent banner (click its accept button). Returns true if one. */
+async function dismissConsent(page) {
+  const containers = await page.$$(
+    "[role='dialog']:visible, [class*='cookie']:visible, [id*='cookie']:visible, [class*='consent']:visible, [id*='consent']:visible",
+  );
+  for (const c of containers) {
+    const txt = ((await c.innerText().catch(() => "")) || "").toLowerCase();
+    const aria = ((await c.getAttribute("aria-label").catch(() => "")) || "").toLowerCase();
+    if (!CONSENT_RE.test(txt) && !CONSENT_RE.test(aria)) continue;
+    const btns = await c.$$("button:visible, [role='button']:visible, a:visible");
+    for (const b of btns) {
+      const t = await elText(b);
+      if (t && t.length < 30 && CONSENT_ACCEPT_RE.test(t)) {
+        try {
+          await b.click({ timeout: 3000 });
+          log(`dismissed consent banner via "${t}"`);
+          await page.waitForTimeout(200);
+          return true;
+        } catch {
+          /* try next button */
+        }
+      }
+    }
+  }
+  return false;
+}
 
 async function elText(el) {
   const raw =
@@ -646,6 +678,8 @@ export async function driveSteps(page, vault, job, opts = {}) {
   let lastSig = null; // state we last acted on — to detect "click did nothing"
   let stuck = 0;
   for (let step = 1; step <= MAX; step++) {
+    // Clear any cookie/consent overlay first, else it masquerades as the gate.
+    await dismissConsent(cur);
     const filled = await prefill(cur, vault, job.autofillFields);
     await snap(cur, `step-${step}`);
     if (filled) say(`Pre-filled ${filled} field(s) on this page.`);

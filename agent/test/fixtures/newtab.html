@@ -1,0 +1,14 @@
+<!doctype html>
+<!-- An "Open an account" CTA that opens the real application in a NEW TAB
+     (target=_blank) — common on bank sites. The agent must follow the new tab
+     and continue there (reaching the identity step), not keep driving this page. -->
+<html>
+<head><meta charset="utf-8"><title>Open an account</title></head>
+<body>
+  <div class="hero">
+    <h1>Smart Advantage Checking</h1>
+    <a href="newtab-app.html" target="_blank" onclick="window.__events && window.__events.push('open')">Open an account</a>
+  </div>
+  <script>window.__events = [];</script>
+</body>
+</html>

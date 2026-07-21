@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  A cookie-consent banner (a role=dialog overlay) covering the real page on load —
+  extremely common on bank sites. The agent must dismiss/accept it and then reach
+  the real "OPEN NOW" CTA, NOT mistake the banner for the application gate and
+  hand over. Records to window.__events.
+-->
+<html>
+<head><meta charset="utf-8"><title>Checking Accounts - BMO</title>
+<style>.hidden{display:none}.banner{position:fixed;bottom:0;left:0;right:0;background:#eee;padding:16px}
+       .modal{position:fixed;inset:20%}</style></head>
+<body>
+  <script>window.__events=[];</script>
+
+  <div id="cookie" class="banner" role="dialog" aria-label="cookie consent">
+    We use cookies to improve your experience.
+    <button onclick="acceptCookies()">Accept All Cookies</button>
+    <button onclick="ev('cookie-reject')">Reject All</button>
+  </div>
+
+  <div class="hero">
+    <h1>BMO Smart Advantage Checking</h1>
+    <a href="#" onclick="openNow();return false">OPEN NOW</a>
+  </div>
+
+  <div id="identity" class="modal hidden" role="dialog" aria-modal="true">
+    <p>Verify your identity</p>
+    <input aria-label="Social Security Number">
+  </div>
+
+  <script>
+    function ev(n){ window.__events.push(n); }
+    function acceptCookies(){ ev('cookie-accept'); document.getElementById('cookie').classList.add('hidden'); }
+    function openNow(){ ev('open-now'); document.getElementById('identity').classList.remove('hidden'); }
+  </script>
+</body>
+</html>
