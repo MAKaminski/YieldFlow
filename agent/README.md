@@ -126,10 +126,30 @@ agent/
 ├── run.mjs             the CLI (Playwright driver) — this is the whole agent
 ├── package.json
 ├── vault.example.json  copy to ~/.yieldflow/vault.json
+├── test/               automated tests for the click-through engine
+│   ├── drive.test.mjs  runs driveSteps against fake bank flows, headless
+│   └── fixtures/*.html faithful single-URL SPA wizards (BMO gate, stuck, stale)
 └── desktop/            OPTIONAL Tauri wrapper (the signed .exe + yieldflow:// launch)
     ├── src-tauri/
     └── ui/
 ```
+
+## Tests
+
+The click-through engine (`driveSteps`) is covered by an automated harness that
+runs the **real** logic against faithful fake bank-flow fixtures in headless
+Chromium — verifying the ZIP/location gate, choosing the right CTA among decoys,
+required radio choices, prefill, the **identity stop**, stale re-renders, and the
+no-progress handover, all without a real bank site.
+
+```bash
+npm test        # needs a Chromium binary
+# point PW_CHROMIUM at one if the default path isn't present:
+# npx playwright install chromium   (then set PW_CHROMIUM to its path)
+```
+
+This proves the agent's *logic*; real-bank DOM quirks + KYC still need a real
+browser (that's the part you drive).
 
 ## Optional: package into a signed .exe with the one-click link
 

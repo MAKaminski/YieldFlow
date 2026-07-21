@@ -500,40 +500,57 @@ export async function findAdvanceCtas(page) {
  * goes stale → "Element is not attached to the DOM"). Returns true if clicked.
  */
 export async function clickByText(page, txt, inModal) {
-  const modal = inModal ? await findOpenModal(page) : null;
-  const scope = modal ?? page;
-  const els = await scope.$$(
-    "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
-  );
-  for (const el of els) {
-    if ((await elText(el)).toLowerCase() === txt.toLowerCase()) {
-      try {
-        await el.click({ timeout: 8000 });
-        return true;
-      } catch (e) {
-        log(`click failed: ${String(e).slice(0, 140)}`);
-        return false;
+  // Retry a few times: on a re-rendering modal the node can detach between
+  // locate and click ("Element is not attached to the DOM"); re-locating fresh
+  // each attempt rides it out instead of failing on a transient race.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const modal = inModal ? await findOpenModal(page) : null;
+    const scope = modal ?? page;
+    const els = await scope.$$(
+      "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
+    );
+    let found = null;
+    for (const el of els) {
+      if ((await elText(el)).toLowerCase() === txt.toLowerCase()) {
+        found = el;
+        break;
       }
     }
+    if (!found) {
+      if (attempt === 2) {
+        log(`could not re-locate "${txt}" to click`);
+        return false;
+      }
+      await page.waitForTimeout(200);
+      continue;
+    }
+    try {
+      await found.click({ timeout: 5000 });
+      return true;
+    } catch (e) {
+      if (attempt === 2) {
+        log(`click failed after retries: ${String(e).slice(0, 140)}`);
+        return false;
+      }
+      await page.waitForTimeout(200);
+    }
   }
-  log(`could not re-locate "${txt}" to click`);
   return false;
 }
 
-/** Human-readable label for a radio/checkbox input. */
-export async function inputLabel(scope, el) {
-  const id = await el.getAttribute("id").catch(() => null);
-  if (id) {
-    const lab = await scope.$(`label[for="${CSS.escape ? CSS.escape(id) : id}"]`).catch(() => null);
-    if (lab) {
-      const t = (await lab.innerText().catch(() => "")).trim();
-      if (t) return t.replace(/\s+/g, " ").slice(0, 70);
-    }
-  }
-  const aria = await el.getAttribute("aria-label").catch(() => null);
-  if (aria) return aria.trim().slice(0, 70);
+/**
+ * Human-readable label for a radio/checkbox input. Resolved entirely inside the
+ * browser context (label[for], aria-label, wrapping <label>, or the next sibling)
+ * — `CSS.escape`/`document` are browser globals, not available in Node.
+ */
+export async function inputLabel(_scope, el) {
   const t = await el
     .evaluate((node) => {
+      if (node.id) {
+        const byId = document.querySelector(`label[for="${CSS.escape(node.id)}"]`);
+        if (byId && byId.textContent.trim()) return byId.textContent.trim();
+      }
+      if (node.getAttribute("aria-label")) return node.getAttribute("aria-label");
       const lab = node.closest("label");
       if (lab && lab.textContent.trim()) return lab.textContent.trim();
       const sib = node.nextElementSibling || node.parentElement?.nextElementSibling;
@@ -562,10 +579,14 @@ export async function findChoiceGroups(scope) {
   return [...byName.values()].filter((g) => g.options.length >= 2 && !g.anyChecked);
 }
 
-/** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
+/**
+ * True if the current page shows identity/KYC fields (SSN/DOB/etc.). Only VISIBLE
+ * fields count — an SPA pre-renders later steps (incl. the identity form) hidden
+ * in the DOM, so a non-visible query would falsely fire on the very first page.
+ */
 export async function atIdentityStep(page) {
   const blob = await page
-    .$$eval("label, input", (els) =>
+    .$$eval("input:visible, label:visible", (els) =>
       els
         .map(
           (e) =>
@@ -669,7 +690,29 @@ export async function driveSteps(page, vault, job, opts = {}) {
 
     // Signature of the current state. If it matches the state we just acted on,
     // the previous click changed nothing → the flow needs the user's input.
-    const sig = `${cur.url()}::${ctas.map((c) => c.txt.toLowerCase()).sort().join("|")}`;
+    // Include the visible field set: a single-URL SPA wizard shows the same
+    // "Continue" on every step, so CTA labels alone can't tell steps apart —
+    // fold in the fields so distinct steps get distinct signatures, while a
+    // genuinely non-advancing repeat still matches.
+    const fieldSig = await cur
+      .$$eval("input:visible, select:visible", (els) =>
+        els
+          .map((e) =>
+            (
+              e.getAttribute("aria-label") ||
+              e.getAttribute("name") ||
+              e.getAttribute("placeholder") ||
+              e.type ||
+              ""
+            )
+              .toLowerCase()
+              .trim(),
+          )
+          .sort()
+          .join(","),
+      )
+      .catch(() => "");
+    const sig = `${cur.url()}::${ctas.map((c) => c.txt.toLowerCase()).sort().join("|")}::${fieldSig}`;
     if (sig === lastSig) {
       stuck++;
       if (ctas.length === 1 || stuck >= 2) {
