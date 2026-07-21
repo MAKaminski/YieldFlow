@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
-import { driveSteps, atIdentityStep } from "../run.mjs";
+import { driveSteps, atIdentityStep, autoChoose } from "../run.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => pathToFileURL(join(HERE, "fixtures", name)).href;
@@ -41,6 +41,7 @@ function chooser(preferences) {
 
 const VAULT = {
   firstName: "Jordan",
+  middleName: "Lee",
   lastName: "Rivers",
   email: "jordan@example.com",
   phone: "5551234567",
@@ -152,6 +153,30 @@ async function main() {
       const active = await driveSteps(page, VAULT, JOB, opts(chooser(["open an account"])));
       assert(active.url().includes("newtab-app.html"), "followed the CTA into the new tab");
       assert(await atIdentityStep(active), "stopped at the identity step in the new tab");
+    });
+
+    console.log("Prefill: <select> dropdown + BMO-style street/middle-name fields:");
+    await withPage(browser, fixture("selectform.html"), async (page) => {
+      await driveSteps(page, VAULT, JOB, opts(chooser([])));
+      const vals = await page.evaluate(() => ({
+        mn: document.getElementById("mn").value,
+        street: document.getElementById("street").value,
+        state: document.getElementById("state").value,
+      }));
+      assert(vals.mn === "Lee", "filled middle name");
+      assert(vals.street === "123 Peachtree St", "matched + filled BMO-style street field (by name)");
+      assert(vals.state === "GA", "selected the state <select> option (GA)");
+    });
+
+    console.log("--auto mode (no prompts; declines the savings add-on):");
+    await withPage(browser, fixture("bmo.html"), async (page) => {
+      // Use the real autoChoose from run.mjs — this is what --auto runs.
+      await driveSteps(page, VAULT, JOB, { choose: autoChoose, quiet: true, test: true, settleMs: 60 });
+      const events = await page.evaluate(() => window.__events);
+      assert(events.includes("open-now"), "auto-picked the OPEN NOW CTA");
+      assert(events.includes("savings:no"), "auto-declined the savings add-on (chose 'No, checking only')");
+      assert(events.includes("personal-continue"), "auto-advanced to the personal form");
+      assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
   } finally {
     await browser.close();

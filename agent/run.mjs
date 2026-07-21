@@ -15,6 +15,7 @@
 //
 // Commands:
 //   node run.mjs                     interactive menu — arrow-key pick an offer
+//   node run.mjs --setup             enter your details → writes the local vault
 //   node run.mjs --offers            list offers you can start a campaign for
 //   node run.mjs --start <offerId>   start a campaign, print its id + run command
 //   node run.mjs --list              list campaigns you can run
@@ -23,6 +24,7 @@
 //
 // Flags:
 //   --base <url>   base URL (or YIELDFLOW_BASE); defaults to http://localhost:3000
+//   --auto         answer the step prompts automatically (defaults; declines add-ons)
 //   --dry-run      fetch the job and print the plan, but DON'T open a browser
 //   --debug        mirror the run log to the console (verbose)
 //   --bypass <t>   Vercel protection-bypass token (or set YIELDFLOW_BYPASS) —
@@ -34,15 +36,16 @@
 // (run.log + screenshots + a browser video). Share run.log + the .png files to
 // get help — it records field KEYS and page labels, never your vault values.
 
-import { readFileSync, mkdirSync, appendFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import readline from "node:readline";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const debug = args.includes("--debug");
+const auto = args.includes("--auto");
 const baseFlagIdx = args.indexOf("--base");
 const baseArg = baseFlagIdx >= 0 ? args[baseFlagIdx + 1] : undefined;
 const bypassFlagIdx = args.indexOf("--bypass");
@@ -55,9 +58,18 @@ const BYPASS = bypassArg ?? process.env.YIELDFLOW_BYPASS;
 //   --list              list campaigns you can run
 const listOffers = args.includes("--offers");
 const listCampaigns = args.includes("--list");
+const wantSetup = args.includes("--setup");
 const startIdx = args.indexOf("--start");
 const startOfferId = startIdx >= 0 ? args[startIdx + 1] : undefined;
-const SUBCOMMAND = listOffers ? "offers" : listCampaigns ? "list" : startIdx >= 0 ? "start" : null;
+const SUBCOMMAND = wantSetup
+  ? "setup"
+  : listOffers
+    ? "offers"
+    : listCampaigns
+      ? "list"
+      : startIdx >= 0
+        ? "start"
+        : null;
 
 const positional = args.find(
   (a) => !a.startsWith("--") && a !== baseArg && a !== bypassArg && a !== startOfferId,
@@ -313,12 +325,13 @@ function usageAndExit() {
     [
       "usage:",
       "  node run.mjs                                interactive menu (pick an offer)",
+      "  node run.mjs --setup                        enter your details (writes the vault)",
       "  node run.mjs --offers                       list offers you can start",
       "  node run.mjs --start <offerId>              start a campaign (prints its id)",
       "  node run.mjs --list                         list campaigns you can run",
       "  node run.mjs <campaignId | https://…/campaigns/ID>   run the agent",
       "",
-      "  flags: [--base URL] [--bypass TOKEN] [--dry-run]",
+      "  flags: [--base URL] [--bypass TOKEN] [--auto] [--dry-run]",
       "  base defaults to http://localhost:3000 (set --base / YIELDFLOW_BASE for a deploy)",
     ].join("\n"),
   );
@@ -357,11 +370,11 @@ function loadVault() {
 const FIELD_HINTS = {
   firstName: [/first ?name/i, /given name/i, /\bfname\b/i],
   lastName: [/last ?name/i, /surname/i, /\blname\b/i],
-  middleName: [/middle/i],
+  middleName: [/middle ?name/i, /middle ?initial/i, /\bmi\b/i],
   email: [/e-?mail/i],
-  phone: [/phone/i, /mobile/i, /tel/i],
-  addressLine1: [/address ?1/i, /street/i, /^address$/i],
-  addressLine2: [/address ?2/i, /apt|suite|unit/i],
+  phone: [/phone/i, /mobile/i, /\btel\b/i],
+  addressLine1: [/address ?line ?1/i, /address ?1/i, /street/i, /^address$/i, /\baddr(ess)?1\b/i, /residential address/i],
+  addressLine2: [/address ?line ?2/i, /address ?2/i, /apt|suite|unit/i, /\baddr(ess)?2\b/i],
   city: [/city/i, /town/i],
   state: [/state|province/i],
   zip: [/zip|postal/i],
@@ -373,8 +386,9 @@ export async function prefill(page, vault, allowedKeys) {
   const filledKeys = [];
   let filled = 0;
   for (const el of inputs) {
+    const tag = await el.evaluate((n) => n.tagName.toLowerCase()).catch(() => "input");
     const type = (await el.getAttribute("type")) ?? "text";
-    if (["hidden", "submit", "button", "checkbox", "radio", "file", "password"].includes(type))
+    if (tag !== "select" && ["hidden", "submit", "button", "checkbox", "radio", "file", "password"].includes(type))
       continue;
     const meta = (
       (await el.getAttribute("aria-label")) ||
@@ -387,13 +401,23 @@ export async function prefill(page, vault, allowedKeys) {
     for (const key of allowedKeys) {
       if (vault[key] == null) continue;
       if ((FIELD_HINTS[key] ?? []).some((re) => re.test(meta))) {
+        const val = String(vault[key]); // value NEVER logged
         try {
-          await el.fill(String(vault[key])); // value NEVER logged
+          if (tag === "select") {
+            // A <select> can't be .fill()'d — pick the option by value or label
+            // (e.g. state "GA" or "Georgia"). Try each form until one matches.
+            await el
+              .selectOption({ value: val })
+              .catch(() => el.selectOption({ label: val }))
+              .catch(() => el.selectOption(val));
+          } else {
+            await el.fill(val);
+          }
           filled++;
           filledKeys.push(key);
-          log(`  filled "${key}" ← field matched on label "${meta.slice(0, 40)}"`);
+          log(`  filled "${key}" ← ${tag} matched on label "${meta.slice(0, 40)}"`);
         } catch {
-          log(`  could not fill "${key}" (field not editable)`);
+          log(`  could not fill "${key}" (${tag} — no matching option / not editable)`);
         }
         break;
       }
@@ -509,20 +533,29 @@ export async function findAdvanceCtas(page) {
     const key = txt.toLowerCase();
     if (seen.has(key)) continue; // dedupe identical labels (nav + hero + footer)
     seen.add(key);
-    cands.push({ el, txt, inModal: !!modal });
+    // A CTA inside site nav/header/footer is usually a decoy — the real
+    // application button lives in the main content. Deprioritise it so the
+    // default (and --auto) picks the hero CTA, not a menu link.
+    const nav = await el
+      .evaluate((n) => !!n.closest("nav,header,footer,[role='navigation'],[role='banner'],[role='contentinfo']"))
+      .catch(() => false);
+    cands.push({ el, txt, inModal: !!modal, nav });
   }
-  const rank = (t) =>
-    modal
-      ? /confirm|continue|submit|see results|update|yes|ok/i.test(t)
+  const rank = (c) => {
+    let r = modal
+      ? /confirm|continue|submit|see results|update|yes|ok/i.test(c.txt)
         ? 2
         : 1
-      : /open (an )?account|open now|apply/i.test(t)
+      : /open (an )?account|open now|apply/i.test(c.txt)
         ? 3
-        : /get started|proceed|start/i.test(t)
+        : /get started|proceed|start/i.test(c.txt)
           ? 2
           : 1;
+    if (!modal && c.nav) r -= 2; // push nav/header/footer CTAs below main-content ones
+    return r;
+  };
   // Stable sort by rank desc; DOM order preserved within a rank.
-  cands.sort((a, b) => rank(b.txt) - rank(a.txt));
+  cands.sort((a, b) => rank(b) - rank(a));
   return cands.slice(0, 6);
 }
 
@@ -656,6 +689,23 @@ function promptChoice(count) {
       },
     );
   });
+}
+
+/**
+ * --auto chooser: answer prompts automatically, no keypress. CTAs take the
+ * best-ranked option (index 0). For a real choice (radio group), prefer a
+ * DECLINE-style option ("No…", "…only", "decline") so we don't silently bundle
+ * an add-on; otherwise the first. You still review before the final submit.
+ */
+export function autoChoose(kind, count, items) {
+  if (kind === "choice") {
+    const i = items.findIndex((o) => /^\s*no\b|\bonly\b|decline|not now|no thanks/i.test(o.label || ""));
+    const pick = i >= 0 ? i : 0;
+    log(`auto-picked choice "${items[pick]?.label}"`);
+    return pick;
+  }
+  log(`auto-picked "${items[0]?.txt}"`);
+  return 0;
 }
 
 /**
@@ -867,6 +917,71 @@ async function cmdStart(offerId) {
   );
 }
 
+// --setup: interactively build the local vault (~/.yieldflow/vault.json). Prompts
+// in the user's terminal; NOTHING is sent anywhere — identity data stays on-device.
+const SETUP_FIELDS = [
+  ["firstName", "First name"],
+  ["middleName", "Middle name (optional)"],
+  ["lastName", "Last name"],
+  ["dateOfBirth", "Date of birth (MM/DD/YYYY)"],
+  ["ssn", "SSN — stays on THIS machine only, never sent to us (optional now)"],
+  ["email", "Email"],
+  ["phone", "Phone (digits only)"],
+  ["addressLine1", "Street address"],
+  ["addressLine2", "Apt / Suite / Unit (optional)"],
+  ["city", "City"],
+  ["state", "State (2-letter, e.g. GA)"],
+  ["zip", "ZIP"],
+];
+async function cmdSetup() {
+  let existing = {};
+  try {
+    existing = JSON.parse(readFileSync(VAULT_PATH, "utf8"));
+    delete existing._comment;
+  } catch {
+    /* no existing vault */
+  }
+  console.log(
+    `Set up your details — saved ONLY to ${VAULT_PATH} on this machine.\n` +
+      "Nothing is ever sent to YieldFlow. Press Enter to keep the current value.\n",
+  );
+
+  // A line queue that works for both a TTY (waits per prompt) and piped input
+  // (buffers lines; readline.question would drop queued lines on EOF).
+  const rl = readline.createInterface({ input: process.stdin });
+  const buffered = [];
+  let waiting = null;
+  let closed = false;
+  rl.on("line", (l) => (waiting ? (waiting(l), (waiting = null)) : buffered.push(l)));
+  rl.on("close", () => {
+    closed = true;
+    if (waiting) (waiting(null), (waiting = null));
+  });
+  const nextLine = () =>
+    new Promise((res) => (buffered.length ? res(buffered.shift()) : closed ? res(null) : (waiting = res)));
+
+  const out = {};
+  for (const [key, label] of SETUP_FIELDS) {
+    const def = existing[key];
+    process.stdout.write(def ? `${label} [${def}]: ` : `${label}: `);
+    const line = await nextLine();
+    const v = (line == null ? "" : line.trim()) || def || "";
+    if (v) out[key] = v;
+    if (line == null) break; // stdin ended
+  }
+  rl.close();
+
+  mkdirSync(dirname(VAULT_PATH), { recursive: true });
+  writeFileSync(VAULT_PATH, JSON.stringify(out, null, 2));
+  try {
+    chmodSync(VAULT_PATH, 0o600);
+  } catch {
+    /* best-effort perms */
+  }
+  console.log(`\n✓ Saved ${Object.keys(out).length} field(s) to ${VAULT_PATH}`);
+  console.log("Run  node run.mjs  to start a campaign, or add  --auto  to auto-answer the prompts.");
+}
+
 // No args on a TTY: pick an offer from the menu → start it → optionally open it.
 async function cmdInteractive() {
   const { offers } = await fetchJson("/api/offers");
@@ -898,7 +1013,7 @@ async function cmdInteractive() {
     );
   }
 
-  const go = await confirm("\nOpen it in Chrome now and pre-fill?");
+  const go = auto ? true : await confirm("\nOpen it in Chrome now and pre-fill?");
   if (go) {
     await main(newId);
   } else {
@@ -1013,7 +1128,8 @@ async function main(cid = campaignId) {
 
     // Guide the application forward (prefill → click next → repeat), stopping at
     // identity/KYC. Returns whatever page/tab we ended on.
-    const active = await driveSteps(page, vault, job);
+    const active = await driveSteps(page, vault, job, auto ? { choose: autoChoose } : {});
+    if (auto) console.log("(--auto: answered the prompts automatically — review the browser before you submit.)");
 
     await report(
       "awaiting_user",
@@ -1074,13 +1190,15 @@ if (isMain) {
   if (!SUBCOMMAND && !wantInteractive && !campaignId) usageAndExit();
   const entry = wantInteractive
     ? cmdInteractive()
-    : SUBCOMMAND === "offers"
-      ? cmdOffers()
-      : SUBCOMMAND === "list"
-        ? cmdList()
-        : SUBCOMMAND === "start"
-          ? cmdStart(startOfferId)
-          : main();
+    : SUBCOMMAND === "setup"
+      ? cmdSetup()
+      : SUBCOMMAND === "offers"
+        ? cmdOffers()
+        : SUBCOMMAND === "list"
+          ? cmdList()
+          : SUBCOMMAND === "start"
+            ? cmdStart(startOfferId)
+            : main();
 
   entry.catch((err) => {
     console.error(String(err));

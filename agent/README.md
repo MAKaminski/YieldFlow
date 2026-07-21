@@ -51,13 +51,21 @@ Then drive the whole loop from `agent/` — no browser needed. The base defaults
 to `http://localhost:3000`, so these Just Work locally:
 
 ```bash
+node run.mjs --setup                  # enter your details once → writes the local vault
 node run.mjs                          # interactive menu: ↑/↓ to pick an offer, Enter to start it
 node run.mjs --offers                 # list offers (marks which open in a browser)
 node run.mjs --start <offerId>        # start a campaign → prints its id + run command
 node run.mjs --list                   # list campaigns you can run
-node run.mjs http://localhost:3000/campaigns/<id> --dry-run   # test the handoff
-node run.mjs http://localhost:3000/campaigns/<id>             # for real (opens Chrome)
+node run.mjs http://localhost:3000/campaigns/<id>           # opens Chrome, drives the form
+node run.mjs http://localhost:3000/campaigns/<id> --auto    # same, but auto-answers the prompts
+node run.mjs http://localhost:3000/campaigns/<id> --dry-run # just test the handoff, no browser
 ```
+
+**`--setup`** prompts you for every field (name, DOB, SSN, address…) and writes
+`~/.yieldflow/vault.json` on your machine — nothing is sent to us. **`--auto`**
+answers the step prompts for you (takes the default CTA, and *declines* add-ons
+like a bundled savings account); it still stops at the identity step and never
+submits — review the browser before you finish.
 
 The easiest path is just **`node run.mjs`** with no arguments: it shows an
 arrow-key menu of offers, and pressing Enter starts that campaign and offers to
