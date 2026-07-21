@@ -33,6 +33,9 @@ export default function RootLayout({
               <Link href="/campaigns" className="hover:text-slate-100">
                 Campaigns
               </Link>
+              <Link href="/vault" className="hover:text-slate-100">
+                My details
+              </Link>
               <a href="/api/offers" className="hover:text-slate-100">
                 API
               </a>

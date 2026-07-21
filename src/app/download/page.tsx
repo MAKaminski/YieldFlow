@@ -13,6 +13,18 @@ export default function DownloadPage() {
         </p>
       </div>
 
+      <div className="rounded-xl border border-accent/30 bg-panel/40 p-4 text-sm">
+        <p className="font-medium text-slate-200">First: your details</p>
+        <p className="mt-1 text-mute">
+          The agent pre-fills applications from a local vault.{" "}
+          <a href="/vault" className="text-accent underline hover:text-accent/80">
+            Enter my details
+          </a>{" "}
+          to build &amp; download it (identity data stays in your browser), or run{" "}
+          <code>node run.mjs --setup</code> in your terminal.
+        </p>
+      </div>
+
       <div className="rounded-xl border border-edge/70 bg-panel/60 p-5 text-sm">
         <p className="font-medium text-slate-200">Run it now — no install (Node 18+ and Chrome)</p>
         <p className="mt-1 text-mute">The agent is just a Node script; you don&apos;t need Tauri or Rust to use it.</p>
