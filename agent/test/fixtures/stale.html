@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  A modal whose CONFIRM button node is continuously re-rendered (detached and
+  recreated every 150ms), reproducing the real "Element is not attached to the
+  DOM" failure. The agent must still click it (it re-locates the button by text
+  at click time) and advance to the identity step, where it stops.
+-->
+<html>
+<head><meta charset="utf-8"><title>Stale re-render</title>
+<style>.modal{position:fixed;inset:20%}.hidden{display:none}</style></head>
+<body>
+  <script>window.__events=[];</script>
+  <div id="gate" class="modal" role="dialog" aria-modal="true">
+    <p>Confirm to continue</p>
+    <div id="btnwrap"><button onclick="confirmIt()">CONFIRM</button></div>
+  </div>
+  <div id="identity" class="modal hidden" role="dialog" aria-modal="true">
+    <p>Verify your identity</p>
+    <input aria-label="Social Security Number">
+  </div>
+  <script>
+    let timer = setInterval(() => {
+      // Re-render the button: replace the node so any previously-held handle detaches.
+      document.getElementById('btnwrap').innerHTML = '<button onclick="confirmIt()">CONFIRM</button>';
+    }, 150);
+    function confirmIt(){
+      window.__events.push('confirm');
+      clearInterval(timer);
+      document.getElementById('gate').classList.add('hidden');
+      document.getElementById('identity').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

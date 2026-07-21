@@ -37,6 +37,7 @@
 import { readFileSync, mkdirSync, appendFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import readline from "node:readline";
 
 const args = process.argv.slice(2);
@@ -306,7 +307,8 @@ const BASE =
 // No subcommand and no positional, on a real terminal → interactive menu.
 const wantInteractive = !SUBCOMMAND && !positional && process.stdin.isTTY;
 const campaignId = SUBCOMMAND || wantInteractive ? undefined : parseCampaignId(positional);
-if (!SUBCOMMAND && !wantInteractive && !campaignId) {
+
+function usageAndExit() {
   console.error(
     [
       "usage:",
@@ -365,7 +367,7 @@ const FIELD_HINTS = {
   zip: [/zip|postal/i],
 };
 
-async function prefill(page, vault, allowedKeys) {
+export async function prefill(page, vault, allowedKeys) {
   const inputs = await page.$$("input:visible, select:visible");
   log(`prefill: ${inputs.length} visible input/select field(s) on the page`);
   const filledKeys = [];
@@ -432,7 +434,7 @@ async function elText(el) {
 }
 
 /** The first visible modal/dialog that actually contains a button, else null. */
-async function findOpenModal(page) {
+export async function findOpenModal(page) {
   const sels = [
     "[role='dialog']",
     "[aria-modal='true']",
@@ -457,7 +459,7 @@ async function findOpenModal(page) {
  * — because a marketing page has many similar CTAs, the user picks from the list.
  * Returns [{ el, txt, inModal }].
  */
-async function findAdvanceCtas(page) {
+export async function findAdvanceCtas(page) {
   const modal = await findOpenModal(page);
   const scope = modal ?? page;
   const matchRe = modal ? MODAL_ADVANCE_RE : ADVANCE_RE;
@@ -497,7 +499,7 @@ async function findAdvanceCtas(page) {
  * prompt can take seconds, during which a modal re-renders and any handle we held
  * goes stale → "Element is not attached to the DOM"). Returns true if clicked.
  */
-async function clickByText(page, txt, inModal) {
+export async function clickByText(page, txt, inModal) {
   const modal = inModal ? await findOpenModal(page) : null;
   const scope = modal ?? page;
   const els = await scope.$$(
@@ -519,7 +521,7 @@ async function clickByText(page, txt, inModal) {
 }
 
 /** Human-readable label for a radio/checkbox input. */
-async function inputLabel(scope, el) {
+export async function inputLabel(scope, el) {
   const id = await el.getAttribute("id").catch(() => null);
   if (id) {
     const lab = await scope.$(`label[for="${CSS.escape ? CSS.escape(id) : id}"]`).catch(() => null);
@@ -546,7 +548,7 @@ async function inputLabel(scope, el) {
  * (e.g. "choose an account option"). Returns [{ name, options:[{el,label}] }].
  * The user picks, because it's a real choice (bundle a savings account?, etc.).
  */
-async function findChoiceGroups(scope) {
+export async function findChoiceGroups(scope) {
   const radios = await scope.$$("input[type='radio']:visible");
   const byName = new Map();
   for (const el of radios) {
@@ -561,7 +563,7 @@ async function findChoiceGroups(scope) {
 }
 
 /** True if the current page shows identity/KYC fields (SSN/DOB/etc.). */
-async function atIdentityStep(page) {
+export async function atIdentityStep(page) {
   const blob = await page
     .$$eval("label, input", (els) =>
       els
@@ -608,7 +610,16 @@ function promptChoice(count) {
  * repeat, up to MAX steps, stopping at identity/KYC. Returns the active page
  * (which may be a new tab opened by a click).
  */
-async function driveSteps(page, vault, job) {
+// opts (all optional — used by the automated test harness):
+//   choose(kind, count, items) → index | "skip" | "stop"  (default: TTY prompt)
+//   quiet   suppress the user-facing console output (default false)
+//   test    skip cloud progress reports (default false)
+//   settleMs  wait after a click (default 2500; tests use a small value)
+export async function driveSteps(page, vault, job, opts = {}) {
+  const choose = opts.choose ?? ((kind, count) => promptChoice(count));
+  const say = opts.quiet ? () => {} : (...a) => console.log(...a);
+  const doReport = opts.test ? async () => {} : report;
+  const settleMs = opts.settleMs ?? 2500;
   const MAX = 8;
   let cur = page;
   let lastSig = null; // state we last acted on — to detect "click did nothing"
@@ -616,14 +627,12 @@ async function driveSteps(page, vault, job) {
   for (let step = 1; step <= MAX; step++) {
     const filled = await prefill(cur, vault, job.autofillFields);
     await snap(cur, `step-${step}`);
-    if (filled) console.log(`Pre-filled ${filled} field(s) on this page.`);
-    if (step === 1) await report("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
+    if (filled) say(`Pre-filled ${filled} field(s) on this page.`);
+    if (step === 1) await doReport("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
 
     if (await atIdentityStep(cur)) {
       log("reached identity/KYC step — handing over");
-      console.log(
-        yellow("\n🔒 This is the identity step (SSN/DOB). That's yours — I stop here."),
-      );
+      say(yellow("\n🔒 This is the identity step (SSN/DOB). That's yours — I stop here."));
       return cur;
     }
 
@@ -633,24 +642,22 @@ async function driveSteps(page, vault, job) {
     const groups = await findChoiceGroups(scopeForChoice);
     let handedOver = false;
     for (const g of groups) {
-      console.log("\n🔘 This step needs a choice — which option?");
-      g.options.forEach((o, i) => console.log(`   ${bold(String(i + 1))}) ${o.label}`));
-      const pick = await promptChoice(g.options.length);
+      say("\n🔘 This step needs a choice — which option?");
+      g.options.forEach((o, i) => say(`   ${bold(String(i + 1))}) ${o.label}`));
+      const pick = await choose("choice", g.options.length, g.options);
       if (pick === "stop" || pick === "skip") {
-        console.log(
-          yellow("\n⏸  Ok — make the selection in the browser and continue there; I'll wait."),
-        );
+        say(yellow("\n⏸  Ok — make the selection in the browser and continue there; I'll wait."));
         handedOver = true;
         break;
       }
       const opt = g.options[pick];
       log(`selecting radio "${opt.label}"`);
-      console.log(dim(`Selecting "${opt.label}"…`));
+      say(dim(`Selecting "${opt.label}"…`));
       await opt.el.check({ timeout: 5000 }).catch(async () => {
         await opt.el.click({ timeout: 5000 }).catch((e) => log(`radio select failed: ${String(e).slice(0, 120)}`));
       });
       stuck = 0; // making a selection is progress
-      await cur.waitForTimeout(400);
+      await cur.waitForTimeout(Math.min(settleMs, 400));
     }
     if (handedOver) break;
 
@@ -667,7 +674,7 @@ async function driveSteps(page, vault, job) {
       stuck++;
       if (ctas.length === 1 || stuck >= 2) {
         log(`no progress after last click (stuck=${stuck}) — handing over`);
-        console.log(
+        say(
           yellow(
             "\n⏸  This step didn't advance — the bank's flow needs your input here.\n" +
               "    Take it from here in the browser; I'll wait. (This is the multi-step\n" +
@@ -676,7 +683,7 @@ async function driveSteps(page, vault, job) {
         );
         break;
       }
-      console.log(yellow("↻ That didn't advance the page — pick a different option, or s to take over."));
+      say(yellow("↻ That didn't advance the page — pick a different option, or s to take over."));
     } else {
       stuck = 0;
     }
@@ -684,34 +691,34 @@ async function driveSteps(page, vault, job) {
 
     // Don't guess a single button — a page can have several look-alike CTAs.
     // Show the choices and let the user pick the right one (default = best guess).
-    console.log(
+    say(
       ctas[0].inModal
         ? "\n👉 Next — submit this popup. Which button?"
         : "\n👉 Next — which button opens the application?",
     );
-    ctas.forEach((c, i) => console.log(`   ${bold(String(i + 1))}) ${c.txt}`));
-    if (job.offer.offerCode) console.log(dim(`   (promo/offer code for later: ${job.offer.offerCode})`));
+    ctas.forEach((c, i) => say(`   ${bold(String(i + 1))}) ${c.txt}`));
+    if (job.offer?.offerCode) say(dim(`   (promo/offer code for later: ${job.offer.offerCode})`));
 
-    const choice = await promptChoice(ctas.length);
+    const choice = await choose("cta", ctas.length, ctas);
     if (choice === "stop") {
       log("user stopped auto-advance");
       break;
     }
     if (choice === "skip") {
-      console.log(dim("Ok — click it yourself; I'll keep the page open."));
+      say(dim("Ok — click it yourself; I'll keep the page open."));
       break;
     }
     const cta = ctas[choice];
 
     log(`clicking "${cta.txt}" (choice ${choice + 1})`);
-    console.log(dim(`Clicking "${cta.txt}"…`));
+    say(dim(`Clicking "${cta.txt}"…`));
     lastSig = sig;
     const before = cur.url();
     // Re-locate the button by text at click time so a stale handle can't fail.
     const ok = await clickByText(cur, cta.txt, cta.inModal);
     // A click may open a new tab; follow the newest page if so.
     await cur.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
-    await cur.waitForTimeout(2500);
+    await cur.waitForTimeout(settleMs);
     const pages = cur.context().pages();
     const newest = pages[pages.length - 1];
     if (newest && newest !== cur) {
@@ -720,7 +727,7 @@ async function driveSteps(page, vault, job) {
     }
     log(`after click: ok=${ok} url=${cur.url()} (was ${before}) title="${await cur.title().catch(() => "")}"`);
   }
-  console.log(
+  say(
     "\n->  Over to you: finish anything remaining, complete identity verification, and submit.\n" +
       "    The browser stays open. Close it when you're done.",
   );
@@ -976,17 +983,30 @@ function printRunDir() {
   );
 }
 
-const entry = wantInteractive
-  ? cmdInteractive()
-  : SUBCOMMAND === "offers"
-    ? cmdOffers()
-    : SUBCOMMAND === "list"
-      ? cmdList()
-      : SUBCOMMAND === "start"
-        ? cmdStart(startOfferId)
-        : main();
+// Only run the CLI when executed directly — importing this module (e.g. from the
+// test harness) must NOT parse argv, prompt, or launch a browser.
+const isMain = (() => {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
+  } catch {
+    return false;
+  }
+})();
 
-entry.catch((err) => {
-  console.error(String(err));
-  process.exit(1);
-});
+if (isMain) {
+  if (!SUBCOMMAND && !wantInteractive && !campaignId) usageAndExit();
+  const entry = wantInteractive
+    ? cmdInteractive()
+    : SUBCOMMAND === "offers"
+      ? cmdOffers()
+      : SUBCOMMAND === "list"
+        ? cmdList()
+        : SUBCOMMAND === "start"
+          ? cmdStart(startOfferId)
+          : main();
+
+  entry.catch((err) => {
+    console.error(String(err));
+    process.exit(1);
+  });
+}
