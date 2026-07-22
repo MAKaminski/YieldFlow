@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  SSN entered as THREE inputs (area-3 / group-2 / serial-4) — another common
+  real-bank shape. A single vault ssn "123-45-6789" must be split across them.
+  DOB here is a single MM/DD/YYYY input (already handled) to isolate the SSN case.
+  Single URL; agent fills, then STOPS.
+-->
+<html>
+<head><meta charset="utf-8"><title>Identity — Demo Bank</title></head>
+<body>
+  <script>window.__events = [];</script>
+  <div id="identity" role="dialog" aria-modal="true">
+    <p>Verify your identity</p>
+
+    <label for="dob">Date of birth</label>
+    <input id="dob" aria-label="Date of birth" placeholder="MM/DD/YYYY">
+
+    <br>
+    <fieldset>
+      <legend>Social Security Number</legend>
+      <input id="ssn1" aria-label="SSN area number" maxlength="3" inputmode="numeric">
+      <input id="ssn2" aria-label="SSN group number" maxlength="2" inputmode="numeric">
+      <input id="ssn3" aria-label="SSN serial number" maxlength="4" inputmode="numeric">
+    </fieldset>
+
+    <button onclick="ev('identity:submit')">SUBMIT APPLICATION</button>
+  </div>
+  <script>function ev(n){ window.__events.push(n); }</script>
+</body>
+</html>

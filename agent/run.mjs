@@ -383,6 +383,61 @@ const FIELD_HINTS = {
   ssn: [/\bssn\b/i, /social security/i, /\bsocial\b/i, /tax ?(payer )?id/i, /\btin\b/i],
 };
 
+// Some banks split one identity value across several inputs — DOB into
+// Month/Day/Year (often <select>s), SSN into area/group/serial boxes. A single
+// vault value (dateOfBirth / ssn) must be distributed across them. These specs
+// are matched BEFORE the plain FIELD_HINTS, because a sub-field label like
+// "SSN area number" also matches the plain "ssn" hint — the part must win.
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "01/15/1990" or "1990-01-15" → candidate strings per part (most-canonical first). */
+function dobParts(val) {
+  const m = String(val).match(/(\d{1,4})\D(\d{1,2})\D(\d{1,4})/);
+  if (!m) return null;
+  let month, day, year;
+  if (m[1].length === 4) [year, month, day] = [m[1], m[2], m[3]];
+  else [month, day, year] = [m[1], m[2], m[3]];
+  const mi = Number(month);
+  if (!(mi >= 1 && mi <= 12) || !year) return null;
+  const pad = (s) => String(Number(s)).padStart(2, "0");
+  return {
+    month: [pad(month), String(mi), MONTH_NAMES[mi - 1], MONTH_NAMES[mi - 1].slice(0, 3)],
+    day: [pad(day), String(Number(day))],
+    year: [year],
+  };
+}
+
+/** "123-45-6789" → { ssn1:[area], ssn2:[group], ssn3:[serial] } (9 digits only). */
+function ssnParts(val) {
+  const d = String(val).replace(/\D/g, "");
+  if (d.length !== 9) return null;
+  return { ssn1: [d.slice(0, 3)], ssn2: [d.slice(3, 5)], ssn3: [d.slice(5)] };
+}
+
+const COMPOSITE_FIELDS = {
+  dobMonth: { from: "dateOfBirth", part: "month", parse: dobParts, hints: [/birth ?month/i, /month of birth/i, /^month$/i, /\bmm\b/i] },
+  dobDay: { from: "dateOfBirth", part: "day", parse: dobParts, hints: [/birth ?day/i, /day of birth/i, /^day$/i, /\bdd\b/i] },
+  dobYear: { from: "dateOfBirth", part: "year", parse: dobParts, hints: [/birth ?year/i, /year of birth/i, /^year$/i, /\byyyy\b/i] },
+  ssnArea: { from: "ssn", part: "ssn1", parse: ssnParts, hints: [/ssn.*area/i, /area number/i, /ssn.?1\b/i, /ssn part ?1/i] },
+  ssnGroup: { from: "ssn", part: "ssn2", parse: ssnParts, hints: [/ssn.*group/i, /group number/i, /ssn.?2\b/i, /ssn part ?2/i] },
+  ssnSerial: { from: "ssn", part: "ssn3", parse: ssnParts, hints: [/ssn.*serial/i, /serial number/i, /ssn.?3\b/i, /ssn part ?3/i] },
+};
+
+/** Fill a <select> (try each candidate as value then label) or an input (first candidate). */
+async function fillOne(el, tag, candidates) {
+  if (tag === "select") {
+    for (const c of candidates) {
+      if (await el.selectOption({ value: c }).then(() => true).catch(() => false)) return true;
+      if (await el.selectOption({ label: c }).then(() => true).catch(() => false)) return true;
+    }
+    return false;
+  }
+  return el.fill(candidates[0]).then(() => true).catch(() => false);
+}
+
 export async function prefill(page, vault, allowedKeys) {
   const inputs = await page.$$("input:visible, select:visible");
   log(`prefill: ${inputs.length} visible input/select field(s) on the page`);
@@ -404,6 +459,33 @@ export async function prefill(page, vault, allowedKeys) {
       ""
     ).toLowerCase();
     if (!meta) continue;
+
+    // Composite identity sub-fields first (split DOB / split SSN). Matched before
+    // the plain hints so a "SSN area"/"Birth month" box gets its PART, not the
+    // whole value. A matched-but-unparseable value still consumes the field
+    // (`handled`) so the plain loop won't then dump the full value into it.
+    let handled = false;
+    for (const [ck, spec] of Object.entries(COMPOSITE_FIELDS)) {
+      if (!allowedKeys.includes(spec.from) || vault[spec.from] == null) continue;
+      if (!spec.hints.some((re) => re.test(meta))) continue;
+      handled = true;
+      const parts = spec.parse(String(vault[spec.from]));
+      const candidates = parts?.[spec.part];
+      if (!candidates) {
+        log(`  skipped "${ck}" (couldn't parse ${spec.from} into parts)`);
+        break;
+      }
+      if (await fillOne(el, tag, candidates)) {
+        filled++;
+        filledKeys.push(ck);
+        log(`  filled "${ck}" ← ${tag} matched on label "${meta.slice(0, 40)}"`);
+      } else {
+        log(`  could not fill "${ck}" (${tag} — no matching option)`);
+      }
+      break;
+    }
+    if (handled) continue;
+
     for (const key of allowedKeys) {
       if (vault[key] == null) continue;
       if ((FIELD_HINTS[key] ?? []).some((re) => re.test(meta))) {

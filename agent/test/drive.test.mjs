@@ -179,6 +179,48 @@ async function main() {
       assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
 
+    console.log("Split DOB (Month/Day selects + Year input) & masked SSN (type=password):");
+    await withPage(browser, fixture("splitdob.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      await driveSteps(page, idVault, idJob, opts(chooser([])));
+      const vals = await page.evaluate(() => ({
+        m: document.getElementById("dob-m").value,
+        d: document.getElementById("dob-d").value,
+        y: document.getElementById("dob-y").value,
+        ssn: document.getElementById("ssn").value,
+      }));
+      const events = await page.evaluate(() => window.__events);
+      assert(vals.m === "01", "selected birth month (01) in the Month <select>");
+      assert(vals.d === "15", "selected birth day (15) in the Day <select>");
+      assert(vals.y === "1990", "filled birth year (1990) in the Year input");
+      assert(vals.ssn === "123-45-6789", "filled masked (type=password) SSN input");
+      assert(!events.includes("identity:submit"), "STOPPED — filled split DOB/masked SSN, never submitted");
+    });
+
+    console.log("Split SSN (3 inputs: area/group/serial):");
+    await withPage(browser, fixture("ssnsplit.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      await driveSteps(page, idVault, idJob, opts(chooser([])));
+      const vals = await page.evaluate(() => ({
+        dob: document.getElementById("dob").value,
+        s1: document.getElementById("ssn1").value,
+        s2: document.getElementById("ssn2").value,
+        s3: document.getElementById("ssn3").value,
+      }));
+      assert(vals.dob === "01/15/1990", "filled single MM/DD/YYYY DOB");
+      assert(vals.s1 === "123" && vals.s2 === "45" && vals.s3 === "6789", "split SSN across the 3 inputs");
+    });
+
     console.log("Identity autofill (SSN/DOB in the vault fill on the identity step, then STOP):");
     await withPage(browser, fixture("bmo.html"), async (page) => {
       // Vault the user opted into: identity values live on-device. The job lists

@@ -1,0 +1,65 @@
+<!doctype html>
+<!--
+  Faithful fake of the identity/KYC patterns that break naive autofill:
+    · Date of birth split into THREE fields — a Month <select>, a Day <select>,
+      and a Year text input (a very common real-bank shape; a single MM/DD/YYYY
+      vault value must be distributed across them).
+    · SSN as a masked single input (type="password") — banks mask the SSN, so
+      prefill must not skip password-type inputs.
+    · A SECOND SSN shape lives in ssnsplit.html: three inputs (area/group/serial).
+
+  Single URL; agent must FILL the DOB/SSN from the vault, then STOP (never submit).
+-->
+<html>
+<head><meta charset="utf-8"><title>Verify your identity — Demo Bank</title></head>
+<body>
+  <script>window.__events = [];</script>
+
+  <div id="identity" role="dialog" aria-modal="true">
+    <p>Verify your identity</p>
+
+    <label for="dob-m">Birth month</label>
+    <select id="dob-m" aria-label="Birth month">
+      <option value="">--</option>
+      <option value="01">January</option>
+      <option value="02">February</option>
+      <option value="03">March</option>
+      <option value="04">April</option>
+      <option value="05">May</option>
+      <option value="06">June</option>
+      <option value="07">July</option>
+      <option value="08">August</option>
+      <option value="09">September</option>
+      <option value="10">October</option>
+      <option value="11">November</option>
+      <option value="12">December</option>
+    </select>
+
+    <label for="dob-d">Birth day</label>
+    <select id="dob-d" aria-label="Birth day">
+      <option value="">--</option>
+    </select>
+
+    <label for="dob-y">Birth year</label>
+    <input id="dob-y" aria-label="Birth year" inputmode="numeric" maxlength="4">
+
+    <br>
+    <label for="ssn">Social Security Number</label>
+    <input id="ssn" aria-label="Social Security Number" type="password" maxlength="11">
+
+    <br>
+    <button onclick="ev('identity:submit')">SUBMIT APPLICATION</button>
+  </div>
+
+  <script>
+    function ev(name){ window.__events.push(name); }
+    // Populate day options 01..31 (like a real dependent-select would).
+    const d = document.getElementById('dob-d');
+    for (let i = 1; i <= 31; i++){
+      const v = String(i).padStart(2, '0');
+      const o = document.createElement('option'); o.value = v; o.textContent = v;
+      d.appendChild(o);
+    }
+  </script>
+</body>
+</html>
