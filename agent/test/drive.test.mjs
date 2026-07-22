@@ -179,6 +179,32 @@ async function main() {
       assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
 
+    console.log("Multi-URL flow (real page-to-page navigations, prefill re-runs each page):");
+    await withPage(browser, fixture("multiurl1.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      const choose = chooser(["open now", "continue"]);
+      const active = await driveSteps(page, idVault, idJob, opts(choose));
+      const url = active.url();
+      const params = new URL(url).searchParams;
+      const vals = await active.evaluate(() => ({
+        ssn: document.getElementById("ssn").value,
+        dob: document.getElementById("dob").value,
+      }));
+      const events = await active.evaluate(() => window.__events);
+      assert(url.includes("multiurl3.html"), "navigated across 3 real pages to the identity step");
+      assert(
+        params.get("fn") === "Jordan" && params.get("ci") === "Atlanta" && params.get("zp") === "30303",
+        "prefill re-ran on page 2 (first name / city / ZIP carried into page 3)",
+      );
+      assert(vals.ssn === "123-45-6789" && vals.dob === "01/15/1990", "prefilled identity on the final page");
+      assert(!events.includes("identity:submit"), "STOPPED at identity on the final page (never submitted)");
+    });
+
     console.log("Split DOB (Month/Day selects + Year input) & masked SSN (type=password):");
     await withPage(browser, fixture("splitdob.html"), async (page) => {
       const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };

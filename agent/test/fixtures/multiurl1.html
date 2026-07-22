@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  Multi-URL flow, page 1 of 3. Unlike the SPA fixtures, each step is a REAL
+  separate HTML page reached by a genuine navigation (as most banks actually
+  work). Verifies the agent: follows same-tab navigations, re-runs prefill on
+  each new page, and its no-progress signature doesn't false-trigger when the
+  URL legitimately changes.
+
+  page 1 (this): marketing → OPEN NOW  →  page 2 (personal form)  →  page 3 (identity)
+-->
+<html>
+<head><meta charset="utf-8"><title>Open an account — Demo Bank</title></head>
+<body>
+  <h1>Demo Bank Checking</h1>
+  <nav><a href="multiurl1.html">Home</a></nav>
+  <a href="multiurl2.html">OPEN NOW</a>
+</body>
+</html>
