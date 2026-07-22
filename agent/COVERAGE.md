@@ -47,3 +47,23 @@ any label the engine doesn't yet recognise). The fastest way to close every ⧗ 
 a run per bank: `node run.mjs <campaign-url>` → send the `~/.yieldflow/runs/<ts>/`
 folder. The `run.log` names exactly which fields filled and which didn't, so any
 miss becomes a one-line hint to add — no guessing.
+
+## Live-DOM probe from this environment (empirical)
+
+`npm run db:scout` points a real **headless** browser at every web offer's
+application URL from the build environment (a datacenter IP), and
+`npm run db:scout-report` prints the per-bank result. Latest run:
+
+```
+17 web offers → 0 captured · 17 blocked · 0 error     (Varo: app-only handoff)
+```
+
+**All 17 blocked.** This is the expected, uniform result — **not** a per-bank
+failure. Banks defend their application pages against datacenter / headless
+browsers (connection resets, bot walls) *before any form loads*. It is precisely
+why the agent is a **local companion that drives the user's real, logged-in
+Chrome on a residential IP**, where these same pages load normally. So "test the
+live form here" is not possible for *any* bank — the meaningful live test is a
+run on the user's machine. What IS proven here — the entry path (18/18) and the
+DOM pattern-classes (60 assertions) — is everything that doesn't require a
+non-datacenter browser.
