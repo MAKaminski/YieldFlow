@@ -203,6 +203,11 @@ async function seed() {
       newCustomerRequired: true,
       customerLookbackMonths: 12,
       termsUrl: "https://www.regions.com/promo/lifegreen-400",
+      applicationUrl: "https://www.regions.com/personal-banking/checking-account",
+      applicationChannel: "web",
+      applicationUrlVerified: false, // set by verify-links during db:discover
+      signupNotes:
+        "Qualifying direct deposit must be payroll/pension/government ACH; external transfers, Zelle, and checks do NOT count. Enter promo code MC154 when opening.",
       rawDocumentId: rawDoc.id,
       extractionConfidence: 0.92,
       verificationStatus: "llm_verified",
@@ -229,6 +234,11 @@ async function seed() {
       newMoneyRequired: true,
       newCustomerRequired: false,
       termsUrl: "https://www.regions.com/promo/premium-mma-415",
+      applicationUrl: "https://www.regions.com/personal-banking/savings/money-market-account",
+      applicationChannel: "web",
+      applicationUrlVerified: false, // set by verify-links during db:discover
+      signupNotes:
+        "Promo APY requires new money not on deposit at Regions in the prior 90 days; fund within the deposit period to earn the 4.15% rate.",
       rawDocumentId: rawDoc.id,
       extractionConfidence: 0.9,
       verificationStatus: "llm_verified",
