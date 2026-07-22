@@ -119,6 +119,7 @@ async function insertOfferTree(
       applicationUrl: o.applicationUrl ?? o.accountOpeningUrl ?? o.termsUrl,
       applicationChannel: o.applicationChannel ?? "web",
       signupNotes: o.signupNotes,
+      audience: o.audience ?? "consumer",
       rawDocumentId: rawDoc.id,
       extractionConfidence: o.extractionConfidence,
       verificationStatus: o.verificationStatus ?? "unverified",
@@ -295,6 +296,7 @@ export async function ingestOffers(
           applicationUrl: newAppUrl,
           applicationChannel: o.applicationChannel ?? "web",
           signupNotes: o.signupNotes,
+          audience: o.audience ?? "consumer",
           status: "active",
         })
         .where(eq(schema.offer.id, prev.id));

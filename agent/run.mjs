@@ -380,7 +380,23 @@ const FIELD_HINTS = {
   zip: [/zip|postal/i],
   // Identity — only filled when present in the LOCAL vault (opt-in).
   dateOfBirth: [/date of birth/i, /\bdob\b/i, /birth ?date/i, /\bd\.?o\.?b\.?\b/i],
-  ssn: [/\bssn\b/i, /social security/i, /\bsocial\b/i, /tax ?(payer )?id/i, /\btin\b/i],
+  // SSN stays social-security-specific — on a BUSINESS form "tax id"/"TIN" means
+  // the EIN, so those live on `ein` (below), not here, to avoid cross-filling.
+  ssn: [/\bssn\b/i, /social security/i, /\bsocial\b/i],
+  // Business (KYB) — filled for business offers when present in the LOCAL vault.
+  businessName: [/business name/i, /legal business/i, /company name/i, /entity name/i, /\bdba\b/i, /doing business as/i],
+  businessAddressLine1: [/business address/i, /company address/i, /business street/i],
+  businessAddressLine2: [/business (address ?line ?2|suite|unit)/i],
+  businessCity: [/business city/i, /company city/i],
+  businessState: [/business state/i, /company state/i],
+  businessZip: [/business (zip|postal)/i, /company (zip|postal)/i],
+  businessPhone: [/business phone/i, /company phone/i, /work phone/i],
+  businessWebsite: [/business (website|url)/i, /company (website|url)/i, /website/i],
+  entityType: [/entity type/i, /business (structure|type)/i, /type of (business|entity|organization)/i, /legal structure/i],
+  formationState: [/state of (formation|incorporation|organization)/i, /formation state/i, /incorporat.*state/i],
+  formationDate: [/formation date/i, /date of (formation|incorporation|establishment)/i, /business (start|established) date/i, /incorporated (on|date)/i],
+  industryNaics: [/naics/i, /industry (code|type)?/i, /business category/i, /nature of business/i],
+  ein: [/\bein\b/i, /employer identification/i, /federal (tax )?id/i, /federal employer/i, /business tax id/i, /tax ?(payer )?id/i, /\btin\b/i],
 };
 
 // Some banks split one identity value across several inputs — DOB into

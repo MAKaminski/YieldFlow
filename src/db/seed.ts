@@ -2,6 +2,7 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { db, schema } from "./index";
 import { computeEconomics, feasibilityScore } from "../lib/yield";
+import { seedFlags } from "../lib/flags";
 
 /**
  * Seeds the full "Regions LifeGreen Preferred Checking" trigger artifact
@@ -595,6 +596,9 @@ async function seed() {
     sentAt: new Date(),
     channel: "email",
   });
+
+  // Register operational feature flags (business_accounts defaults OFF).
+  await seedFlags();
 
   console.log("Seed complete.");
   console.log(

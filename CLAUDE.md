@@ -48,6 +48,12 @@ src/lib/discovery/scout.ts  preview scout: real headless browser previews each
                      application page (npm run db:scout). Note: banks block
                      headless/datacenter browsers — expect ~all `blocked`; the
                      cockpit falls back to the verified link + instructions.
+src/lib/flags.ts     feature flags (feature_flag table): isFlagEnabled/setFlag/
+                     seedFlags. FLAG_DEFS registers each flag (business_accounts
+                     defaults OFF). Gates the Business tab.
+src/app/admin/       /admin page — toggle feature flags (FlagToggle + actions.ts).
+src/app/business/    gated Business tab — business-audience offers; notFound()s
+                     unless business_accounts is on (nav link hidden too).
 src/app/campaigns/actions.ts  server actions (the app's only write path)
 src/lib/agent.ts     builds the desktop-agent job payload (field KEYS only, no
                      PII). AUTOFILL_FIELDS + IDENTITY_FIELDS (dateOfBirth, ssn);

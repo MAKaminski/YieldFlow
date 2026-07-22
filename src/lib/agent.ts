@@ -33,6 +33,25 @@ export const AUTOFILL_FIELDS = [
  */
 export const IDENTITY_FIELDS = ["dateOfBirth", "ssn"] as const;
 
+/** Non-sensitive business (KYB) fields, filled for business-audience offers. */
+export const BUSINESS_FIELDS = [
+  "businessName",
+  "businessAddressLine1",
+  "businessAddressLine2",
+  "businessCity",
+  "businessState",
+  "businessZip",
+  "businessPhone",
+  "businessWebsite",
+  "entityType",
+  "formationState",
+  "formationDate",
+  "industryNaics",
+] as const;
+
+/** Sensitive business identity — EIN lives on-device like the SSN (opt-in). */
+export const BUSINESS_IDENTITY_FIELDS = ["ein"] as const;
+
 export interface AgentJob {
   schemaVersion: number;
   campaignId: string;
@@ -44,6 +63,7 @@ export interface AgentJob {
     applicationUrlVerified: boolean;
     offerCode: string | null;
     signupNotes: string | null;
+    audience: "consumer" | "business";
   };
   steps: { taskType: string; title: string; detail: string; url?: string }[];
   /** Field keys the agent may fill from its local vault. */
@@ -64,6 +84,7 @@ export async function buildAgentJob(
       campaign: schema.campaign,
       offer: schema.offer,
       institution: schema.institution,
+      audience: schema.offer.audience,
     })
     .from(schema.campaign)
     .innerJoin(schema.offer, eq(schema.campaign.offerId, schema.offer.id))
@@ -89,6 +110,15 @@ export async function buildAgentJob(
     };
   });
 
+  // Business offers add the KYB field set (EIN is sensitive, like the SSN).
+  const isBusiness = head.audience === "business";
+  const autofillFields = isBusiness
+    ? [...AUTOFILL_FIELDS, ...IDENTITY_FIELDS, ...BUSINESS_FIELDS, ...BUSINESS_IDENTITY_FIELDS]
+    : [...AUTOFILL_FIELDS, ...IDENTITY_FIELDS];
+  const identityFields = isBusiness
+    ? [...IDENTITY_FIELDS, ...BUSINESS_IDENTITY_FIELDS]
+    : IDENTITY_FIELDS;
+
   return {
     schemaVersion: JOB_SCHEMA_VERSION,
     campaignId,
@@ -100,12 +130,14 @@ export async function buildAgentJob(
       applicationUrlVerified: !!head.offer.applicationUrlVerified,
       offerCode: head.offer.offerCode,
       signupNotes: head.offer.signupNotes,
+      audience: head.audience,
     },
     steps,
     // The agent may fill any of these from the LOCAL vault (values never leave the
-    // machine). Identity keys included so DOB/SSN auto-fill when the user opted in.
-    autofillFields: [...AUTOFILL_FIELDS, ...IDENTITY_FIELDS],
-    identityFields: IDENTITY_FIELDS,
+    // machine). Identity keys included so DOB/SSN/EIN auto-fill when the user
+    // opted in; the agent still stops at the identity step and never submits.
+    autofillFields,
+    identityFields,
     progressUrl: `${origin}/api/agent/progress`,
   };
 }

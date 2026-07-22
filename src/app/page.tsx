@@ -5,7 +5,10 @@ import { bpsToPercentString, centsToUsd, offerDurations } from "@/lib/yield";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const offers = await getRankedOffers();
+  // Consumer offers only — business offers live on the gated /business tab.
+  const offers = (await getRankedOffers()).filter(
+    (o) => o.offer.audience !== "business",
+  );
 
   const eligible = offers.filter(
     (o) => o.eligibility?.eligibilityStatus === "eligible",

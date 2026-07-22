@@ -118,6 +118,9 @@ export interface DiscoveredOffer {
   applicationChannel?: "web" | "app" | "branch" | "phone";
   signupNotes?: string; // bank-specific gotcha, especially what counts as DD
 
+  /** Consumer (default) or business — business offers surface behind a feature flag. */
+  audience?: "consumer" | "business";
+
   // Monetization: an affiliate/referral link + network, when we have one.
   affiliateUrl?: string;
   affiliateNetwork?: string;

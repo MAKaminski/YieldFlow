@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import { isFlagEnabled } from "@/lib/flags";
 
 export const metadata: Metadata = {
   title: "YieldFlow — Deposit-Bonus Harvesting Agent",
@@ -8,11 +9,13 @@ export const metadata: Metadata = {
     "Discovers bank sign-up bonuses, models their requirements, and ranks them by bonus dollars per capital-day.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // The Business tab only renders when the feature flag is on (default off).
+  const businessEnabled = await isFlagEnabled("business_accounts").catch(() => false);
   return (
     <html lang="en">
       <body className="min-h-screen font-sans">
@@ -30,11 +33,19 @@ export default function RootLayout({
               <Link href="/" className="hover:text-slate-100">
                 Offers
               </Link>
+              {businessEnabled && (
+                <Link href="/business" className="hover:text-slate-100">
+                  Business
+                </Link>
+              )}
               <Link href="/campaigns" className="hover:text-slate-100">
                 Campaigns
               </Link>
               <Link href="/vault" className="hover:text-slate-100">
                 My details
+              </Link>
+              <Link href="/admin" className="hover:text-slate-100">
+                Admin
               </Link>
               <a href="/api/offers" className="hover:text-slate-100">
                 API

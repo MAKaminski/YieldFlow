@@ -203,6 +203,48 @@ async function main() {
       assert(!vals.submitted, "STOPPED at the identity step inside the iframe (never submitted)");
     });
 
+    console.log("Business (KYB) form — fills business fields + EIN, stops at owner SSN/DOB:");
+    await withPage(browser, fixture("business.html"), async (page) => {
+      const bizVault = {
+        ...VAULT,
+        dateOfBirth: "01/15/1990",
+        ssn: "123-45-6789",
+        businessName: "Rivers Widgets LLC",
+        ein: "12-3456789",
+        entityType: "LLC",
+        formationState: "GA",
+        formationDate: "03/04/2020",
+        businessAddressLine1: "500 Market St",
+        businessCity: "Atlanta",
+      };
+      const bizJob = {
+        // Mirrors buildAgentJob for a business offer: business + identity keys included.
+        autofillFields: Object.keys(bizVault),
+        identityFields: ["dateOfBirth", "ssn", "ein"],
+        offer: { audience: "business" },
+      };
+      await driveSteps(page, bizVault, bizJob, opts(chooser([])));
+      const v = await page.evaluate(() => ({
+        bn: document.getElementById("bn").value,
+        ein: document.getElementById("ein").value,
+        et: document.getElementById("et").value,
+        fs: document.getElementById("fs").value,
+        fd: document.getElementById("fd").value,
+        ba: document.getElementById("ba").value,
+        ssn: document.getElementById("ssn").value,
+        dob: document.getElementById("dob").value,
+      }));
+      const events = await page.evaluate(() => window.__events);
+      assert(v.bn === "Rivers Widgets LLC", "filled legal business name");
+      assert(v.ein === "12-3456789", "filled EIN (opt-in, not an identity-stop trigger)");
+      assert(v.et === "LLC", "selected entity type <select>");
+      assert(v.fs === "GA", "filled state of formation");
+      assert(v.fd === "03/04/2020", "filled date of formation");
+      assert(v.ba === "500 Market St", "filled business address");
+      assert(v.ssn === "123-45-6789" && v.dob === "01/15/1990", "pre-filled beneficial-owner SSN/DOB");
+      assert(!events.includes("identity:submit"), "STOPPED at owner identity (never submitted)");
+    });
+
     console.log("In-frame multi-step wizard (agent clicks CONTINUE inside the iframe, then stops):");
     await withPage(browser, fixture("iframe-wizard.html"), async (page) => {
       const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };

@@ -128,6 +128,12 @@ export const offer = sqliteTable("offer", {
   })
     .notNull()
     .default("active"),
+  // Who the offer is for. Business offers pay far more but need a KYB payload
+  // (EIN, entity type, …); they surface only behind the `business_accounts`
+  // feature flag. Default consumer so existing rows are unaffected.
+  audience: text("audience", { enum: ["consumer", "business"] })
+    .notNull()
+    .default("consumer"),
   ...timestamps(),
 });
 

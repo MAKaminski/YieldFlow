@@ -127,3 +127,14 @@ export const consentRecord = sqliteTable("consent_record", {
   documentHash: text("document_hash"),
   ...timestamps(),
 });
+
+// Operational feature flags, toggled from the /admin page. Keyed by a stable
+// string (e.g. "business_accounts"); `enabled` gates a feature's UI/behavior.
+export const featureFlag = sqliteTable("feature_flag", {
+  id: pk(),
+  key: text("key").notNull().unique(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  label: text("label"),
+  description: text("description"),
+  ...timestamps(),
+});

@@ -168,6 +168,8 @@ Three reads to go deeper:
 | `/offers/[id]` | Requirement tree (AND/OR), disqualifiers, geo eligibility, economics |
 | `/campaigns/[id]` | The campaign cockpit — task chain, deep-links, approval-gated transfer plan, recall schedule |
 | `/vault` | "Enter my details" — builds & downloads your local agent vault (identity data never touches the server) |
+| `/admin` | Operational controls — toggle feature flags (e.g. the `business_accounts` beta) |
+| `/business` | **Gated** Business-accounts tab (hidden unless `business_accounts` is on) — business checking bonuses ($300–$1,000+) |
 | `GET /api/offers` · `GET /api/campaigns` | Ranked offers / campaigns as JSON |
 | `GET /api/agent/job/[id]` | The desktop-agent job (offer URL, steps, field **keys** — never PII) |
 | `GET /api/eligibility?bonusCents=&capitalCents=&holdDays=&marginalRateBps=&ddDifficulty=` | Pure yield calculator |

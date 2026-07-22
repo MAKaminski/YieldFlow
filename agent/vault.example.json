@@ -11,5 +11,20 @@
   "addressLine2": "",
   "city": "Atlanta",
   "state": "GA",
-  "zip": "30303"
+  "zip": "30303",
+
+  "_business_comment": "Business (KYB) fields — only used for business-account offers. Fill these if you're harvesting business checking bonuses. EIN is sensitive like the SSN; include it only if you accept it sitting on disk (chmod 600).",
+  "businessName": "",
+  "ein": "",
+  "entityType": "",
+  "formationState": "",
+  "formationDate": "",
+  "industryNaics": "",
+  "businessPhone": "",
+  "businessWebsite": "",
+  "businessAddressLine1": "",
+  "businessAddressLine2": "",
+  "businessCity": "",
+  "businessState": "",
+  "businessZip": ""
 }
