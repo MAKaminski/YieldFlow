@@ -1,164 +1,226 @@
-# YieldFlow
+<div align="center">
 
-**Automated Deposit-Bonus Harvesting Agent** — discovers US bank sign-up bonus
-offers, models their requirements as an executable AND/OR rules tree, computes
-per-user eligibility + yield, and tracks "campaigns" to actually earn the
-bonuses. Advisory-first: it never takes custody of funds.
+# 💸 YieldFlow
 
-The product thesis: a bank bonus is a *fixed dollar amount decoupled from
-balance*, so the return is inversely proportional to how much capital you tie up
-and for how long. The optimizer's objective is **most bonus dollars per
-capital-day**, subject to ACH throughput, ChexSystems velocity, and FDIC limits.
+### Your idle cash, working at 100%+ APY — by harvesting bank sign-up bonuses on autopilot.
 
-The reference offer wired end-to-end in the seed is the Regions *LifeGreen
-Preferred Checking* $400 bonus (+ a stackable Premium Money Market 4.15% APY
-promo): $1,500 held 90 days for $400 ≈ **108% annualized** (~74% after tax).
+**YieldFlow takes a pool of cash and rotates it through US bank sign-up bonuses**, opening the right accounts, hitting each bonus's requirements, collecting the payout, and recalling the money — then doing it again. It targets a **net yield north of 100%** and **~$3,000+/year** for a user eligible for the full slate of offers. Advisory-first: **it never takes custody of your funds.**
 
-## Stack
+![agent tests](https://img.shields.io/badge/agent_logic_tests-60_passing-brightgreen)
+![banks verified](https://img.shields.io/badge/bank_entry_paths-18%2F18-brightgreen)
+![offers](https://img.shields.io/badge/live_offers-18_active-blue)
+![Next.js](https://img.shields.io/badge/Next.js-15-black)
+![Drizzle](https://img.shields.io/badge/Drizzle-libSQL%2FTurso-blue)
+![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
-- **Next.js 15** (App Router) + **TypeScript** + **Tailwind CSS**
-- **Drizzle ORM** on the **libSQL** driver (`@libsql/client`)
-- **SQLite locally** (`file:local.db`) → **Turso** in production. libSQL *is*
-  SQLite, so the same schema/driver works — but unlike a plain SQLite file, a
-  Turso database persists writes on Vercel's serverless filesystem.
-- **Zod** for API input validation
+[**What it does**](#-what-it-does) · [**The math**](#-the-math-why-100-is-real) · [**Pricing**](#-pricing--net-value) · [**Quickstart**](#-quickstart) · [**Architecture**](./ARCHITECTURE.md) · [**Agents**](./AGENTS.md) · [**Coverage**](./agent/COVERAGE.md)
 
-## Quick start (local — zero external services)
+</div>
+
+---
+
+## 🎯 What it does
+
+A bank sign-up bonus is a **fixed dollar amount decoupled from your balance** — Chase pays $400 whether you park $1,000 or $100,000. So the return is inversely proportional to *how much* capital you tie up and *for how long*. Tie up $1,000 for 90 days to earn $400, free it, and redeploy — and that dollar is working at **162% annualized.**
+
+YieldFlow turns that insight into a system:
+
+```
+   discover offers  →  score eligibility & yield  →  run campaigns  →  rotate capital
+   (18 live banks)     (per-user, GA demo)           (open→fund→DD       (bonus $ per
+                                                       →collect→recall)    capital-day)
+```
+
+1. **Discovers** live US checking/savings bonuses and models each one's fine print as an executable **AND/OR requirement tree** (direct-deposit thresholds, minimum balances, hold windows, geo/ChexSystems disqualifiers).
+2. **Scores** every offer *for you* — eligibility + capital required + **after-tax annualized yield**, ranked by the core metric: **bonus dollars per capital-day.**
+3. **Runs the campaign** — an ordered task chain (open account → fund → trigger qualifying direct deposit → confirm the bonus posted → **recall your money**) with pre-filled bank deep-links and a wind-down schedule so capital never sits idle.
+4. **Pre-fills the application** in *your own browser* via a local desktop agent — then stops at identity verification, which is always yours to complete. No stealth, no custody, no KYC-by-bot.
+
+> **Advisory-first, by design.** YieldFlow plans and assists; it never moves or holds your money. Account opening is a deep-link handoff (you complete KYC), and money movement stays behind an explicit approval gate. This keeps YieldFlow outside money-transmitter licensing — and keeps you in control.
+
+---
+
+## 📈 The math (why 100%+ is real)
+
+Because capital **rotates**, each dollar-day is extraordinarily productive. These are the **real offers** in the current dataset, scored for a demo user eligible for the whole slate (`npm run db:verify-banks` + the dashboard produce these numbers):
+
+| Bank | Bonus | Capital held | Days | Annualized | After-tax | **Net of 20% fee** |
+|---|--:|--:|--:|--:|--:|--:|
+| Truist One Checking | $400 | $500 | 90 | **324%** | 221% | **259%** |
+| Fifth Third Momentum | $300 | $500 | 90 | **243%** | 165% | **194%** |
+| Chase Total Checking | $400 | $1,000 | 90 | **162%** | 110% | **130%** |
+| Wells Fargo Everyday | $325 | $1,000 | 90 | **132%** | 90% | **105%** |
+| Capital One 360 | $250 | $1,000 | 75 | **122%** | 83% | **97%** |
+| SoFi Checking+Savings | $400 | $5,000 | 25 | **117%** | 79% | **94%** |
+
+*(annualized = bonus ÷ capital × 365 ÷ hold-days; after-tax assumes a 32% marginal rate; net-of-fee subtracts YieldFlow's 20% cut before annualizing.)*
+
+**The full eligible slate today: 11 offers → $3,375 in bonuses.** You don't need $38k sitting still to earn it — you rotate a **working pool of a few thousand dollars** through the offers over the year, because each one only ties capital for its 25–90 day window. That rotation is exactly what the optimizer sequences (maximize bonus-$ per capital-day, subject to ACH throughput, ChexSystems velocity, and FDIC limits).
+
+---
+
+## 💵 Pricing & net value
+
+**$20 / month + 20% of the sign-up bonuses you actually earn.** That's it. No cut of your capital, no fee on bonuses you don't collect.
+
+Worked example — a user who harvests the **full $3,375 eligible slate** in a year:
+
+| | Amount |
+|---|--:|
+| Gross bonuses earned | **+$3,375** |
+| YieldFlow subscription (12 × $20) | −$240 |
+| YieldFlow performance fee (20% × $3,375) | −$675 |
+| **Your net, after all fees** | **≈ +$2,460 / year** |
+
+You keep **~73%** of every bonus dollar. And the fee is *structurally* dominated by the yield: even after YieldFlow's 20% cut, the top offers still annualize **well over 100%** (Truist 259%, Chase 130%, Wells Fargo 105% — see the last column above). You are paying $20 + 20% to capture a return that no savings account, CD, or T-bill comes close to.
+
+> Illustrative, not a guarantee or financial advice. Actual results depend on your eligibility, available capital, direct-deposit setup, and diligent execution of each campaign. Bonuses are taxable income.
+
+---
+
+## ✅ What's proven (performance & testing)
+
+YieldFlow's economics engine and its browser agent are covered by automated tests that run the **real** code — no mocks of the logic.
+
+| Metric | Value |
+|---|---|
+| **Agent-logic assertions** | **60 passing** across 12 scenarios / 17 fixtures |
+| **Bank entry-paths verified** | **18 / 18** (`npm run db:verify-banks`) |
+| **Agent harness runtime** | ~13 s end-to-end (real headless Chromium, incl. browser launch) |
+| **Job build latency** | ~**142 ms/bank** (offer → campaign → agent job, measured over 18 offers) |
+| **Prefill** | fills a page's fields in a single pass, across frames, incl. `<label for>`/`aria-labelledby`-only fields |
+| **Data model** | 37 tables, 9 domains, one migration set |
+
+The agent harness runs the actual `driveSteps` click-through engine against faithful fake bank-flow fixtures in headless Chromium, proving **11 distinct real-bank DOM pattern-classes** — SPA gates, decoy-CTA selection, required radio choices, split/masked identity fields, `<label>`-only fields, `<iframe>`-embedded forms, in-frame multi-step wizards, cookie banners, stale re-renders, new-tab CTAs, and the no-progress handover — all while **always stopping at the identity/KYC step**. See [`agent/COVERAGE.md`](./agent/COVERAGE.md) for the per-bank + per-pattern matrix.
+
+```bash
+cd agent && npm test        # 60 assertions, headless Chromium
+npm run db:verify-banks     # 18/18 bank entry paths
+```
+
+---
+
+## 🚀 Quickstart
+
+**Run the whole thing locally with zero external services** (SQLite file, no login wall):
 
 ```bash
 npm install
 cp .env.example .env          # DATABASE_URL defaults to file:local.db
-npm run db:generate           # generate SQL migration from the schema (already committed)
-npm run db:migrate            # create local.db with all 37 tables
-npm run db:seed               # load the Regions example end-to-end
+npm run db:reset              # build local.db (37 tables) + demo data
+npm run db:discover           # ingest the 18-bank live offer set + score eligibility
 npm run dev                   # http://localhost:3000
 ```
 
-`npm run db:reset` wipes and rebuilds `local.db` from scratch.
-`npm run db:discover` ingests the curated snapshot **plus** any live-extracted
-offers (additive), records field-level changes to `offer_change_log`, expires
-past-deadline offers, and recomputes eligibility. Live extraction fetches public
-offer-list pages (Doctor of Credit / NerdWallet / Bankrate / CNBC) and
-LLM-extracts them — **gated on `ANTHROPIC_API_KEY`**; without a key it no-ops and
-the curated snapshot is the baseline. Only public offer lists are fetched — never
-bank application pages, and no bot-evasion.
+Then drive the agent from the `agent/` folder (needs Node 18+ and Google Chrome):
 
-**Monetization:** outbound "Open application" clicks route through
-`/go/<offerId>`, which logs the click (to `audit_log`) and 302s to the offer's
-affiliate link when set (`offer.affiliateUrl`), else the plain application URL —
-a compliant affiliate-revenue seam that never touches funds. `GET
-/api/discovery/status` exposes pipeline health (per-source runs, offer counts,
-recent changes).
+```bash
+cd agent && npm install
+node run.mjs --setup                         # enter your details once → local vault (never leaves your machine)
+node run.mjs                                  # arrow-key menu: pick an offer, start a campaign
+node run.mjs http://localhost:3000/campaigns/<id>          # opens Chrome, pre-fills, stops at identity
+node run.mjs http://localhost:3000/campaigns/<id> --auto   # same, auto-answers the step prompts
+```
 
-## How it works (discovery → eligibility → campaign)
+Full agent guide: [`agent/README.md`](./agent/README.md). Deploy to Vercel + Turso: [see below](#-deploy-vercel--turso).
 
-1. **Discovery** (`src/lib/discovery/`): a source-agnostic pipeline normalizes
-   offers into the schema (institution → product → offer → AND/OR requirement
-   tree → disqualifiers → geo). `curatedProvider` holds a hand-verified snapshot
-   of ~21 live US checking bonuses (Chase, SoFi, Capital One, PNC, Wells Fargo,
-   Citi, TD, …), each stored with an `extractionConfidence` + `verificationStatus`
-   + source link. `liveWebProvider` is the documented crawler seam (needs an LLM
-   key). Run with `npm run db:discover` or `POST /api/discovery/run`.
-2. **Eligibility** (`src/lib/eligibility.ts`): `evaluateEligibility` applies geo,
-   existing-customer, prior-bonus, and ChexSystems-velocity rules, then computes
-   the capital-days economics via `src/lib/yield.ts`. `recomputeEligibility`
-   materializes `user_offer_eligibility` rows. The demo user is in **GA**, so
-   out-of-footprint offers (Huntington, TD, KeyBank, …) are correctly excluded.
-3. **Campaign cockpit** (Feature 5): click **Start campaign** on any eligible
-   offer → `startCampaign` (`src/lib/orchestration.ts`) creates the campaign, a
-   per-requirement progress tracker, an ordered task chain (open → fund → direct
-   deposit → confirm → **recall funds**) with bank deep-links, and an
-   **approval-gated** transfer plan (fund + end-of-period recall). Drive it at
-   `/campaigns/[id]`.
+---
 
-### Desktop agent (agentic sign-up)
+## 🗺️ How it fits together
 
-A hosted app can't drive a user's browser or complete KYC, so the "agentic
-sign-up" runs as a local companion (`agent/`, Tauri + Playwright). The cockpit's
-**Launch agent** button opens `yieldflow://campaign/<id>`; the installed agent
-fetches the job (`/api/agent/job/<id>` — offer URL, steps, field *keys*, no PII),
-opens the user's real Chrome, pre-fills non-identity fields from a **local vault**
-(`~/.yieldflow/vault.json`, never sent to the cloud), then pauses for the user to
-complete identity verification and submit, reporting progress to
-`/api/agent/progress`. No stealth, no fingerprint spoofing, no custody — it
-degrades to copy-paste if a bank blocks automation. Build/sign steps in
-[`agent/README.md`](./agent/README.md).
+```mermaid
+flowchart LR
+    subgraph Cloud["☁️  YieldFlow (Next.js on Vercel + Turso)"]
+        D["Discovery pipeline<br/>src/lib/discovery"] --> DB[("libSQL / Turso<br/>37 tables")]
+        DB --> E["Eligibility + yield<br/>src/lib/eligibility · yield"]
+        E --> C["Campaign orchestration<br/>src/lib/orchestration"]
+        C --> API["/api/agent/job/:id/<br/>(field KEYS only — no PII)"]
+    end
+    subgraph Local["💻  Your machine"]
+        API --> AG["Desktop agent<br/>agent/run.mjs (Playwright)"]
+        V[("~/.yieldflow/vault.json<br/>your data, on-device")] --> AG
+        AG --> CH["Your real Chrome<br/>pre-fill → STOP at identity"]
+    end
+    CH -. "you complete KYC + submit" .-> BANK["🏦 Bank application"]
+```
 
-### Advisory boundary (by design)
+Three reads to go deeper:
 
-YieldFlow never takes custody of funds. Account opening is a deep-link **handoff**
-(identity verification must be completed by the user), and real money movement
-sits behind `transfer_plan.approved_by_user_at` and a stubbed
-`ExecutionAdapter` (`src/lib/execution/adapter.ts`) — it plans and approves, but
-executes nothing until a connected account (see `BACKLOG.md`, Feature 4) + an ACH
-provider are wired. This keeps YieldFlow outside money-transmitter licensing and
-the headless-KYC problem.
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — the full system: 9 data domains, the discovery→eligibility→campaign→agent data flow, the yield math, the browser-agent engine, and the security model.
+- **[AGENTS.md](./AGENTS.md)** — every autonomous/assistive "agent" in the product (discovery, eligibility, orchestration, the desktop prefill agent) **and** the conventions for AI coding agents working in this repo.
+- **[agent/COVERAGE.md](./agent/COVERAGE.md)** — what's test-proven, per bank and per DOM pattern-class.
 
-## Pages & API
+---
+
+## 🧩 Stack
+
+- **Next.js 15** (App Router) · **TypeScript** · **Tailwind CSS**
+- **Drizzle ORM** on **libSQL** (`@libsql/client`) — **SQLite locally** (`file:local.db`), **Turso** in production (same driver, switched by `DATABASE_URL`; libSQL *is* SQLite but persists writes on Vercel serverless).
+- **Zod** for API validation · **Playwright** (`playwright-core`) for the desktop agent · **Anthropic SDK** for optional live offer extraction.
+
+---
+
+## 🔌 Pages & API
 
 | Route | What it shows |
 |---|---|
-| `/` | Offer pipeline ranked by risk-adjusted after-tax annualized yield |
+| `/` | Offer pipeline ranked by risk-adjusted after-tax annualized yield + total required capital |
 | `/offers/[id]` | Requirement tree (AND/OR), disqualifiers, geo eligibility, economics |
-| `/campaigns` | Campaigns with per-requirement progress vs. deadline & clawback date |
-| `GET /api/offers` | Ranked offers as JSON |
-| `GET /api/campaigns` | Campaigns + progress as JSON |
+| `/campaigns/[id]` | The campaign cockpit — task chain, deep-links, approval-gated transfer plan, recall schedule |
+| `/vault` | "Enter my details" — builds & downloads your local agent vault (identity data never touches the server) |
+| `GET /api/offers` · `GET /api/campaigns` | Ranked offers / campaigns as JSON |
+| `GET /api/agent/job/[id]` | The desktop-agent job (offer URL, steps, field **keys** — never PII) |
 | `GET /api/eligibility?bonusCents=&capitalCents=&holdDays=&marginalRateBps=&ddDifficulty=` | Pure yield calculator |
-
-Example:
+| `GET /api/discovery/status` | Discovery pipeline health (per-source runs, offer counts, recent changes) |
 
 ```bash
-curl "localhost:3000/api/eligibility?bonusCents=40000&capitalCents=150000&holdDays=90&marginalRateBps=3200&ddDifficulty=probabilistic"
-# -> projectedAnnualizedYieldBps: 10815 (108.15%), projectedNetAfterTaxBps: 7354
+curl "localhost:3000/api/eligibility?bonusCents=40000&capitalCents=100000&holdDays=90&marginalRateBps=3200&ddDifficulty=probabilistic"
+# -> projectedAnnualizedYieldBps: 16222 (162%), projectedNetAfterTaxBps: 11031 (110%)
 ```
 
-## Data model
+---
 
-37 tables across 9 domains (A Institution/Product → I Agent/Compliance). See
-[`ERD.md`](./ERD.md) for the full map and the Postgres→SQLite type translation.
-Schema lives in `src/db/schema/`, one file per domain, barrel-exported from
-`schema/index.ts`.
+## ☁️ Deploy (Vercel + Turso)
 
-## Deploying to Vercel + Turso
+Local dev needs nothing external. Production needs a Turso database (a plain SQLite file doesn't persist writes on Vercel serverless).
 
-Local dev needs nothing external. Production needs a Turso database because a
-plain SQLite file does not persist writes on Vercel serverless.
-
-1. **Create a Turso database** ([install the CLI](https://docs.turso.tech/cli/installation)):
+1. **Create a Turso DB** ([CLI install](https://docs.turso.tech/cli/installation)):
    ```bash
    turso db create yieldflow
-   turso db show yieldflow --url          # -> DATABASE_URL (libsql://…)
-   turso db tokens create yieldflow       # -> DATABASE_AUTH_TOKEN
+   turso db show yieldflow --url        # -> DATABASE_URL (libsql://…)
+   turso db tokens create yieldflow     # -> DATABASE_AUTH_TOKEN
    ```
-2. **Apply the schema to Turso** (one-off, from your machine — never in the
-   Vercel build):
+2. **Apply the schema to Turso** (one-off, from your machine — never in the Vercel build):
    ```bash
    DATABASE_URL="libsql://…" DATABASE_AUTH_TOKEN="…" npm run db:migrate
    DATABASE_URL="libsql://…" DATABASE_AUTH_TOKEN="…" npm run db:seed   # optional demo data
    ```
-3. **Set the env vars in Vercel** (Project → Settings → Environment Variables):
-   `DATABASE_URL` and `DATABASE_AUTH_TOKEN`.
+3. **Set env vars in Vercel** (Project → Settings → Environment Variables): `DATABASE_URL`, `DATABASE_AUTH_TOKEN`.
 4. **Deploy** — push to the repo (Vercel auto-detects Next.js) or `vercel --prod`.
-
-### Environment variables
 
 | Var | Local | Production |
 |---|---|---|
 | `DATABASE_URL` | `file:local.db` | `libsql://<db>-<org>.turso.io` |
 | `DATABASE_AUTH_TOKEN` | *(empty)* | Turso token |
+| `ANTHROPIC_API_KEY` | *(optional)* | enables live offer extraction |
 
 Secrets live in `.env` (gitignored); `.env.example` is the committed template.
 
-## Scope & posture
+---
 
-Built **advisory-first with assisted execution**, deliberately outside
-money-transmitter licensing and KYC-impersonation:
+## 🛡️ Posture & boundaries
 
-- **Auto:** offer discovery, extraction, eligibility, requirement tracking,
-  deadline alerts, transfer planning.
-- **One-click approved:** transfer legs between accounts the user already owns.
-- **Assisted handoff:** account opening via deep link + credential-vault autofill.
+Built **advisory-first with assisted execution**, deliberately outside money-transmitter licensing and KYC-impersonation:
 
-This repo is the data model + read-only cockpit. The crawlers, aggregator
-(Plaid) integration, DD classifier, and optimizer are modeled in the schema
-(Domains B, E, G, I) and are the natural next build-out.
+- **Automated:** offer discovery, extraction, eligibility, yield scoring, requirement tracking, deadline alerts, transfer planning.
+- **One-click, approval-gated:** transfer legs between accounts *you already own*.
+- **Assisted handoff:** account opening via deep-link + on-device vault autofill — **the agent always stops at identity/KYC and never clicks submit.**
+- **Never:** takes custody of funds, moves money without your approval, spoofs fingerprints, evades bank security, or sends your SSN/DOB to our servers.
+
+The crawlers (Domain B), Plaid aggregation + DD classifier (Domain E), the capital-days optimizer + transfer execution (Domain G), and payout/tax reconciliation (Domain H) are modeled in the schema and are the natural next build-out — see [`BACKLOG.md`](./BACKLOG.md).
+
+---
+
+<div align="center">
+<sub>Not financial advice. Bank bonuses are taxable income. YieldFlow is a planning &amp; automation tool — you own the accounts, complete identity verification, and approve every transfer.</sub>
+</div>

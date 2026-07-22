@@ -1,13 +1,19 @@
 # CLAUDE.md — YieldFlow
 
-Guidance for AI agents working in this repo.
+Guidance for AI agents working in this repo. Companion docs:
+[README.md](./README.md) (product + math), [ARCHITECTURE.md](./ARCHITECTURE.md)
+(full system design), [AGENTS.md](./AGENTS.md) (the product agents + this same
+guidance in machine-readable form), [agent/COVERAGE.md](./agent/COVERAGE.md)
+(per-bank + per-pattern test matrix).
 
 ## What this is
 
 An **Automated Deposit-Bonus Harvesting Agent**: discovers bank sign-up bonuses,
 models their requirements as an executable AND/OR rules tree, computes per-user
 eligibility + yield, and tracks campaigns to earn them. Advisory-first — never
-takes custody of funds. Core metric: **bonus dollars per capital-day**.
+takes custody of funds. Core metric: **bonus dollars per capital-day**. Targets
+a net yield >100% and ~$3k/yr for a fully-eligible user; pricing is $20/mo + 20%
+of bonuses earned.
 
 ## Stack
 
@@ -35,17 +41,29 @@ src/lib/orchestration.ts  startCampaign → campaign + task chain + transfer pla
 src/lib/execution/adapter.ts  ExecutionAdapter seam (stub only — no money moves)
 src/db/discovery-data.ts  curated snapshot of ~21 live offers
 src/db/discover.ts   npm run db:discover — ingest + recompute eligibility
+src/db/verify-banks.ts  npm run db:verify-banks — per-bank entry-path check:
+                     for every active offer, start a campaign + build the agent
+                     job, assert it's well-formed (URL/channel/fields/steps).
 src/lib/discovery/scout.ts  preview scout: real headless browser previews each
                      application page (npm run db:scout). Note: banks block
                      headless/datacenter browsers — expect ~all `blocked`; the
                      cockpit falls back to the verified link + instructions.
 src/app/campaigns/actions.ts  server actions (the app's only write path)
-src/lib/agent.ts     builds the desktop-agent job payload (no PII)
-src/app/api/agent/*  job + progress endpoints the local .exe talks to
-agent/               Tauri desktop agent (yieldflow:// launch) + Playwright
-                     sidecar that pre-fills the application on the user's machine;
-                     built into a signed .exe out-of-repo. Runs in the user's
-                     own browser, user completes KYC — no stealth, no custody.
+src/lib/agent.ts     builds the desktop-agent job payload (field KEYS only, no
+                     PII). AUTOFILL_FIELDS + IDENTITY_FIELDS (dateOfBirth, ssn);
+                     identity keys are merged into autofillFields so DOB/SSN
+                     auto-fill IF present in the local vault (opt-in).
+src/app/api/agent/*  job + progress endpoints the local agent talks to
+src/app/vault/       "Enter my details" page — builds & downloads the local
+                     vault client-side (SSN/DOB never sent to the server).
+agent/run.mjs        the desktop agent (single-file Node CLI, playwright-core):
+                     drives the user's real Chrome, frame-aware prefill (resolves
+                     <label for>/aria-labelledby, split/masked DOB+SSN, iframes),
+                     guided click-through (driveSteps), always STOPS at identity.
+agent/test/          automated headless harness (drive.test.mjs + fixtures) that
+                     runs the real driveSteps against fake bank flows — 60 asserts.
+agent/COVERAGE.md    per-bank + per-pattern coverage matrix.
+agent/desktop/       OPTIONAL Tauri wrapper (yieldflow:// launch + signed .exe).
 src/app/…            App Router pages (server components) + /api route handlers
 ```
 
@@ -65,15 +83,23 @@ src/app/…            App Router pages (server components) + /api route handler
 ## Workflow
 
 ```bash
-npm run db:generate   # after ANY schema change → regenerates ./drizzle SQL
-npm run db:migrate    # apply to the DATABASE_URL target
-npm run db:seed       # reload demo data
-npm run db:reset      # wipe local.db + migrate + seed
-npm run build         # must pass before committing (Vercel parity)
+npm run db:generate      # after ANY schema change → regenerates ./drizzle SQL
+npm run db:migrate       # apply to the DATABASE_URL target
+npm run db:seed          # reload demo data
+npm run db:reset         # wipe local.db + migrate + seed
+npm run db:discover      # ingest live offer set + recompute eligibility
+npm run db:verify-banks  # 18/18 bank entry paths (needs reset+discover first)
+npm run build            # must pass before committing (Vercel parity)
+cd agent && npm test     # 60 agent-logic assertions (needs a Chromium binary)
 ```
 
 **After changing `src/db/schema/`, always `npm run db:generate` and commit the
 new `drizzle/*.sql`.** Migrations are never run in the Vercel build.
+
+**Before committing agent changes**, run `cd agent && npm test` (the click-through
+harness) — and when a real bank exposes a new DOM quirk, add a fixture +
+assertion so it becomes a permanent regression test (this is how the harness grew
+27 → 60). See AGENTS.md § "Adding coverage for a new real-bank DOM quirk".
 
 ## Not built yet (modeled in schema, natural next steps)
 
