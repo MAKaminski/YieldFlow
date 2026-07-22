@@ -179,6 +179,30 @@ async function main() {
       assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
 
+    console.log("iframe-embedded form (agent must reach into the frame to fill + stop):");
+    await withPage(browser, fixture("iframe.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      await driveSteps(page, idVault, idJob, opts(chooser([])));
+      const frame = page.frames().find((f) => f.url().includes("iframe-inner"));
+      const vals = await frame.evaluate(() => ({
+        fn: document.getElementById("fn").value,
+        ci: document.getElementById("ci").value,
+        dob: document.getElementById("dob").value,
+        ssn: document.getElementById("ssn").value,
+        submitted: (window.__innerEvents || []).includes("identity:submit"),
+      }));
+      assert(vals.fn === "Jordan", "filled First name inside the iframe");
+      assert(vals.ci === "Atlanta", "filled City inside the iframe");
+      assert(vals.dob === "01/15/1990", "filled DOB inside the iframe");
+      assert(vals.ssn === "123-45-6789", "filled masked SSN inside the iframe");
+      assert(!vals.submitted, "STOPPED at the identity step inside the iframe (never submitted)");
+    });
+
     console.log("BMO-style SmartForm (fields labelled only by <label for>, opaque ids):");
     await withPage(browser, fixture("smartform.html"), async (page) => {
       const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };

@@ -443,8 +443,13 @@ async function fillOne(el, tag, candidates) {
 }
 
 export async function prefill(page, vault, allowedKeys) {
-  const inputs = await page.$$("input:visible, select:visible");
-  log(`prefill: ${inputs.length} visible input/select field(s) on the page`);
+  // Reach into <iframe>s too — banks/KYC vendors often render the real form in a
+  // frame, and Playwright selectors don't descend into frames on their own.
+  const frames = typeof page.frames === "function" ? page.frames() : [page];
+  const inputs = (
+    await Promise.all(frames.map((f) => f.$$("input:visible, select:visible").catch(() => [])))
+  ).flat();
+  log(`prefill: ${inputs.length} visible input/select field(s) across ${frames.length} frame(s)`);
   const filledKeys = [];
   let filled = 0;
   for (const el of inputs) {
@@ -768,22 +773,28 @@ export async function findChoiceGroups(scope) {
  * in the DOM, so a non-visible query would falsely fire on the very first page.
  */
 export async function atIdentityStep(page) {
-  const blob = await page
-    .$$eval("input:visible, label:visible", (els) =>
-      els
-        .map(
-          (e) =>
-            e.textContent ||
-            e.getAttribute("aria-label") ||
-            e.getAttribute("name") ||
-            e.getAttribute("placeholder") ||
-            "",
-        )
-        .join(" ")
-        .toLowerCase(),
-    )
-    .catch(() => "");
-  return IDENTITY_RE.test(blob);
+  // Check every frame — the identity/KYC fields may live inside an <iframe>, and
+  // we must STOP there just as we would on the main page.
+  const frames = typeof page.frames === "function" ? page.frames() : [page];
+  for (const frame of frames) {
+    const blob = await frame
+      .$$eval("input:visible, label:visible", (els) =>
+        els
+          .map(
+            (e) =>
+              e.textContent ||
+              e.getAttribute("aria-label") ||
+              e.getAttribute("name") ||
+              e.getAttribute("placeholder") ||
+              "",
+          )
+          .join(" ")
+          .toLowerCase(),
+      )
+      .catch(() => "");
+    if (IDENTITY_RE.test(blob)) return true;
+  }
+  return false;
 }
 
 /**
