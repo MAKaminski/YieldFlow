@@ -1,0 +1,35 @@
+<!doctype html>
+<!--
+  A business (KYB) application: business-info fields (name, EIN, entity type,
+  formation state/date, business address) followed by a beneficial-owner
+  identity block (SSN/DOB). The agent should PREFILL the business fields + EIN
+  from the vault, then STOP at the owner identity step (never submit). EIN is a
+  normal opt-in fill, NOT an identity-stop trigger — the stop is the owner SSN/DOB.
+-->
+<html>
+<head><meta charset="utf-8"><title>Open a business account — Demo Bank</title></head>
+<body>
+  <script>window.__events = [];</script>
+  <h2>Tell us about your business</h2>
+  <label for="bn">Legal business name</label><input id="bn"><br>
+  <label for="ein">Employer Identification Number (EIN)</label><input id="ein"><br>
+  <label for="et">Entity type</label>
+  <select id="et">
+    <option value="">Select…</option>
+    <option value="LLC">LLC</option>
+    <option value="S-Corp">S-Corporation</option>
+    <option value="Sole Proprietorship">Sole Proprietorship</option>
+  </select><br>
+  <label for="fs">State of formation</label><input id="fs"><br>
+  <label for="fd">Date of formation</label><input id="fd" placeholder="MM/DD/YYYY"><br>
+  <label for="ba">Business address</label><input id="ba"><br>
+  <label for="bc">Business city</label><input id="bc"><br>
+
+  <h2>Beneficial owner</h2>
+  <label for="ssn">Social Security Number</label><input id="ssn" type="password"><br>
+  <label for="dob">Date of birth</label><input id="dob" placeholder="MM/DD/YYYY"><br>
+  <button onclick="ev('identity:submit')">SUBMIT APPLICATION</button>
+
+  <script>function ev(n){ window.__events.push(n); }</script>
+</body>
+</html>

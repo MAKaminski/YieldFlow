@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  Multi-URL flow, page 2 of 3 — the personal-info form on its own URL. The agent
+  should prefill these fields, then click CONTINUE to navigate to page 3. CONTINUE
+  carries the filled values into page 3's query string so the test can prove
+  prefill re-ran here after the navigation from page 1.
+-->
+<html>
+<head><meta charset="utf-8"><title>Tell us about yourself — Demo Bank</title></head>
+<body>
+  <h2>Tell us about yourself</h2>
+  <label for="fn">First name</label><input id="fn" aria-label="First name"><br>
+  <label for="ln">Last name</label><input id="ln" aria-label="Last name"><br>
+  <label for="ci">City</label><input id="ci" aria-label="City"><br>
+  <label for="zp">ZIP</label><input id="zp" aria-label="ZIP"><br>
+  <a id="cont" href="multiurl3.html" onclick="return go()">CONTINUE</a>
+
+  <script>
+    function go(){
+      const q = new URLSearchParams({
+        fn: document.getElementById('fn').value,
+        ci: document.getElementById('ci').value,
+        zp: document.getElementById('zp').value,
+      });
+      location.href = 'multiurl3.html?' + q.toString();
+      return false;
+    }
+  </script>
+</body>
+</html>

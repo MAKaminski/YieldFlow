@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  The real application form, served to be embedded in an <iframe> by iframe.html.
+  Some banks / KYC vendors render the actual form inside an iframe (often on a
+  different subdomain). Playwright selectors don't descend into frames, so
+  frame-unaware prefill fills ZERO of these.
+-->
+<html>
+<head><meta charset="utf-8"><title>Application form</title></head>
+<body>
+  <script>window.__innerEvents = [];</script>
+  <label for="fn">First name</label><input id="fn"><br>
+  <label for="ci">City</label><input id="ci"><br>
+  <label for="dob">Date of birth</label><input id="dob" placeholder="MM/DD/YYYY"><br>
+  <label for="ssn">Social Security Number</label><input id="ssn" type="password"><br>
+  <button onclick="window.__innerEvents.push('identity:submit')">SUBMIT APPLICATION</button>
+</body>
+</html>

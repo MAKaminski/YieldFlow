@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  A personal-info form with a <select> state dropdown and BMO-style field names
+  (the real run couldn't fill "state" — a select — or match the street field).
+  SSN is present so the agent prefills what it can, then stops at identity.
+-->
+<html>
+<head><meta charset="utf-8"><title>Application form</title></head>
+<body>
+  <div role="dialog" aria-modal="true">
+    <input aria-label="Middle name" id="mn"><br>
+    <input name="primaryapplicant_currentaddress_addressline1" id="street"><br>
+    <select aria-label="State" id="state">
+      <option value="">Select a state</option>
+      <option value="NY">New York</option>
+      <option value="GA">Georgia</option>
+    </select><br>
+    <input aria-label="Social Security Number" id="ssn">
+  </div>
+</body>
+</html>

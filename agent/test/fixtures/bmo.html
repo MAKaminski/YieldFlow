@@ -1,0 +1,102 @@
+<!doctype html>
+<!--
+  Faithful fake of BMO's multi-step, single-URL (SPA) application flow, used by
+  the automated agent test. Every stage transition is client-side (the URL never
+  changes — exactly like the real bank wizard), and each real action pushes to
+  window.__events so the test can assert the agent drove the correct sequence.
+
+  Flow:  ZIP modal (CONFIRM)  →  landing (OPEN NOW, among decoys)
+      →  savings-bundle modal (radio required, then CONTINUE)
+      →  personal-info form (text fields, CONTINUE)
+      →  identity step (SSN/DOB)  ← agent must STOP here
+-->
+<html>
+<head><meta charset="utf-8"><title>Checking Accounts: Open Online in Minutes - BMO</title>
+<style>
+  body { font-family: sans-serif; }
+  .modal { position: fixed; inset: 10% 20%; background: #fff; border: 1px solid #ccc;
+           padding: 24px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.4); }
+  .hidden { display: none; }
+  .err { color: #b00; }
+  nav a, footer a, .hero a { display: inline-block; margin: 8px; }
+</style>
+</head>
+<body>
+  <script>window.__events = [];</script>
+
+  <!-- Persistent marketing chrome (decoy CTAs live here) -->
+  <nav>
+    <a href="#" onclick="ev('nav:open-account');return false">Open an account</a>
+    <a href="#" onclick="ev('nav:signin');return false">Sign in</a>
+  </nav>
+
+  <div id="landing">
+    <div class="hero">
+      <h1>BMO Smart Advantage Checking</h1>
+      <a href="#" onclick="openNow();return false">OPEN NOW</a>
+    </div>
+    <footer>
+      <a href="#" onclick="ev('footer:apply');return false">Apply now</a>
+    </footer>
+  </div>
+
+  <!-- Stage 0: ZIP gate modal (open on load) -->
+  <div id="zipModal" class="modal" role="dialog" aria-modal="true">
+    <button aria-label="Close" onclick="ev('zip:close');return false">×</button>
+    <p>Is this your ZIP Code?</p>
+    <input aria-label="ZIP code input box" id="zip" />
+    <button onclick="confirmZip()">CONFIRM</button>
+  </div>
+
+  <!-- Stage 2: savings bundle modal -->
+  <div id="savingsModal" class="modal hidden" role="dialog" aria-modal="true">
+    <p>Would you like to bundle a Savings Builder account with your BMO Smart Advantage Checking account?</p>
+    <input type="radio" id="sv-yes" name="acct"><label for="sv-yes">Yes, add a Savings Builder account</label><br>
+    <input type="radio" id="sv-no" name="acct"><label for="sv-no">No, open a checking account only</label>
+    <p id="svErr" class="err hidden">Please choose an account option.</p>
+    <button onclick="savingsContinue()">CONTINUE</button>
+  </div>
+
+  <!-- Stage 3: personal info form -->
+  <div id="personal" class="modal hidden" role="dialog" aria-modal="true">
+    <p>Tell us about yourself</p>
+    <input aria-label="First name" id="fn"><br>
+    <input aria-label="Last name" id="ln"><br>
+    <input aria-label="Email" id="em"><br>
+    <input aria-label="Phone" id="ph"><br>
+    <input aria-label="Street address" id="ad"><br>
+    <input aria-label="City" id="ci"><br>
+    <input aria-label="State" id="st"><br>
+    <input aria-label="ZIP" id="zp"><br>
+    <button onclick="personalContinue()">CONTINUE</button>
+  </div>
+
+  <!-- Stage 4: identity / KYC (agent must STOP before touching this) -->
+  <div id="identity" class="modal hidden" role="dialog" aria-modal="true">
+    <p>Verify your identity</p>
+    <input aria-label="Social Security Number" id="ssn"><br>
+    <input aria-label="Date of birth" id="dob"><br>
+    <button onclick="ev('identity:submit')">SUBMIT APPLICATION</button>
+  </div>
+
+  <script>
+    function ev(name){ window.__events.push(name); }
+    function show(id){ document.getElementById(id).classList.remove('hidden'); }
+    function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+    function confirmZip(){ ev('confirm-zip'); hide('zipModal'); }
+
+    function openNow(){ ev('open-now'); show('savingsModal'); }
+
+    function savingsContinue(){
+      const yes = document.getElementById('sv-yes').checked;
+      const no  = document.getElementById('sv-no').checked;
+      if (!yes && !no){ ev('savings-continue-blocked'); show('svErr'); return; }
+      ev('savings:' + (yes ? 'yes' : 'no'));
+      hide('savingsModal'); show('personal');
+    }
+
+    function personalContinue(){ ev('personal-continue'); hide('personal'); show('identity'); }
+  </script>
+</body>
+</html>

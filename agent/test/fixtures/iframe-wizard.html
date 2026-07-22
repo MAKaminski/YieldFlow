@@ -1,0 +1,14 @@
+<!doctype html>
+<!--
+  Parent shell whose multi-step application wizard runs entirely inside an
+  <iframe>. The agent must click the in-frame CONTINUE to advance from the
+  personal step to the identity step, then STOP — all without any form field or
+  button in the main frame.
+-->
+<html>
+<head><meta charset="utf-8"><title>Open your account — Demo Bank</title></head>
+<body>
+  <h1>Open your account</h1>
+  <iframe id="app" src="iframe-wizard-inner.html" width="500" height="400" title="Application"></iframe>
+</body>
+</html>

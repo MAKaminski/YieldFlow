@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  Date-of-birth field shapes that broke naive fill():
+   · #dobm — a MASKED text input that reformats typed digits into MM/DD/YYYY (a
+     plain .fill("05/20/1988") on BMO produced "05201988" and a red validation
+     error; the agent must TYPE it so the mask inserts the slashes → "05/20/1988").
+   · #dobd — <input type="date">, which needs an ISO value "1988-05-20".
+  Plus an SSN field so the agent recognises this as the identity step and stops.
+-->
+<html>
+<head><meta charset="utf-8"><title>Verify your identity — Demo Bank</title></head>
+<body>
+  <script>window.__events = [];</script>
+  <label for="dobm">Date of birth</label>
+  <input id="dobm" placeholder="MM/DD/YYYY" inputmode="numeric"><br>
+  <label for="dobd">Date of birth (calendar)</label>
+  <input id="dobd" type="date" aria-label="Date of birth calendar"><br>
+  <label for="ssn">Social Security Number</label>
+  <input id="ssn" type="password"><br>
+  <button onclick="window.__events.push('identity:submit')">SUBMIT APPLICATION</button>
+
+  <script>
+    // A digit-only mask that formats as MM/DD/YYYY — like many bank DOB inputs.
+    const m = document.getElementById('dobm');
+    m.addEventListener('input', () => {
+      const d = m.value.replace(/\D/g, '').slice(0, 8);
+      m.value =
+        d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4)
+        : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2)
+        : d;
+    });
+  </script>
+</body>
+</html>
