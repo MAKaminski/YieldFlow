@@ -203,6 +203,30 @@ async function main() {
       assert(!vals.submitted, "STOPPED at the identity step inside the iframe (never submitted)");
     });
 
+    console.log("In-frame multi-step wizard (agent clicks CONTINUE inside the iframe, then stops):");
+    await withPage(browser, fixture("iframe-wizard.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      await driveSteps(page, idVault, idJob, opts(chooser(["continue"])));
+      const frame = page.frames().find((f) => f.url().includes("iframe-wizard-inner"));
+      const state = await frame.evaluate(() => ({
+        fn: document.getElementById("fn").value,
+        dob: document.getElementById("dob").value,
+        ssn: document.getElementById("ssn").value,
+        stepBVisible: !document.getElementById("stepB").classList.contains("hidden"),
+        events: window.__innerEvents || [],
+      }));
+      assert(state.fn === "Jordan", "filled the personal step inside the iframe");
+      assert(state.events.includes("continue"), "clicked CONTINUE inside the iframe (advanced the wizard)");
+      assert(state.stepBVisible, "advanced to the identity step inside the iframe");
+      assert(state.dob === "01/15/1990" && state.ssn === "123-45-6789", "prefilled identity inside the iframe");
+      assert(!state.events.includes("identity:submit"), "STOPPED at in-frame identity (never submitted)");
+    });
+
     console.log("BMO-style SmartForm (fields labelled only by <label for>, opaque ids):");
     await withPage(browser, fixture("smartform.html"), async (page) => {
       const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };

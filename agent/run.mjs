@@ -576,9 +576,22 @@ const IDENTITY_RE = /ssn|social security|date of birth|\bdob\b|mother'?s maiden|
 const CONSENT_RE = /cookie|consent|gdpr|privacy|tracking preference/i;
 const CONSENT_ACCEPT_RE = /^(accept|agree|allow|got it|ok|okay|i understand|enable|continue)/i;
 
+// The main frame plus every child frame — banks/KYC vendors put the real form
+// (and sometimes the gate modal, consent banner, or wizard buttons) in an
+// <iframe>, and Playwright selectors don't cross frame boundaries on their own.
+function scopesOf(page) {
+  return typeof page.frames === "function" ? page.frames() : [page];
+}
+/** Run a selector across the main frame + all child frames; flat list of handles. */
+async function queryAllFrames(page, selector) {
+  const lists = await Promise.all(scopesOf(page).map((s) => s.$$(selector).catch(() => [])));
+  return lists.flat();
+}
+
 /** Dismiss a cookie/consent banner (click its accept button). Returns true if one. */
 async function dismissConsent(page) {
-  const containers = await page.$$(
+  const containers = await queryAllFrames(
+    page,
     "[role='dialog']:visible, [class*='cookie']:visible, [id*='cookie']:visible, [class*='consent']:visible, [id*='consent']:visible",
   );
   for (const c of containers) {
@@ -623,7 +636,7 @@ export async function findOpenModal(page) {
     "[class*='overlay']",
   ];
   for (const sel of sels) {
-    for (const el of await page.$$(`${sel}:visible`)) {
+    for (const el of await queryAllFrames(page, `${sel}:visible`)) {
       const hasBtn = await el.$("button:visible, [role='button']:visible, input[type='submit']:visible");
       if (hasBtn) return el;
     }
@@ -640,11 +653,11 @@ export async function findOpenModal(page) {
  */
 export async function findAdvanceCtas(page) {
   const modal = await findOpenModal(page);
-  const scope = modal ?? page;
   const matchRe = modal ? MODAL_ADVANCE_RE : ADVANCE_RE;
-  const els = await scope.$$(
-    "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
-  );
+  const clickableSel = "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible";
+  // A gate modal is resolved on its own; otherwise consider CTAs across all
+  // frames so a Continue button living inside an <iframe> wizard is reachable.
+  const els = modal ? await modal.$$(clickableSel) : await queryAllFrames(page, clickableSel);
   const cands = [];
   const seen = new Set();
   for (const el of els) {
@@ -691,12 +704,12 @@ export async function clickByText(page, txt, inModal) {
   // Retry a few times: on a re-rendering modal the node can detach between
   // locate and click ("Element is not attached to the DOM"); re-locating fresh
   // each attempt rides it out instead of failing on a transient race.
+  const clickableSel = "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible";
   for (let attempt = 0; attempt < 3; attempt++) {
     const modal = inModal ? await findOpenModal(page) : null;
-    const scope = modal ?? page;
-    const els = await scope.$$(
-      "a:visible, button:visible, [role='button']:visible, input[type='submit']:visible",
-    );
+    // Re-locate in the modal if we're submitting a gate; otherwise search every
+    // frame so an in-<iframe> button is found and clicked in its own frame.
+    const els = modal ? await modal.$$(clickableSel) : await queryAllFrames(page, clickableSel);
     let found = null;
     for (const el of els) {
       if ((await elText(el)).toLowerCase() === txt.toLowerCase()) {
@@ -754,7 +767,12 @@ export async function inputLabel(_scope, el) {
  * The user picks, because it's a real choice (bundle a savings account?, etc.).
  */
 export async function findChoiceGroups(scope) {
-  const radios = await scope.$$("input[type='radio']:visible");
+  // `scope` is either an open-modal handle or a Page. For a Page, look across all
+  // frames so a required radio group inside an <iframe> wizard is still found.
+  const radios =
+    typeof scope.frames === "function"
+      ? await queryAllFrames(scope, "input[type='radio']:visible")
+      : await scope.$$("input[type='radio']:visible");
   const byName = new Map();
   for (const el of radios) {
     const name = (await el.getAttribute("name").catch(() => null)) || "(unnamed)";
@@ -917,24 +935,33 @@ export async function driveSteps(page, vault, job, opts = {}) {
     // "Continue" on every step, so CTA labels alone can't tell steps apart —
     // fold in the fields so distinct steps get distinct signatures, while a
     // genuinely non-advancing repeat still matches.
-    const fieldSig = await cur
-      .$$eval("input:visible, select:visible", (els) =>
-        els
-          .map((e) =>
-            (
-              e.getAttribute("aria-label") ||
-              e.getAttribute("name") ||
-              e.getAttribute("placeholder") ||
-              e.type ||
-              ""
+    // Fold in the visible field set across ALL frames, so distinct steps of an
+    // in-<iframe> wizard get distinct signatures (main-frame-only would be empty
+    // for an iframed form and make every step look identical → false "stuck").
+    const fieldSig = (
+      await Promise.all(
+        scopesOf(cur).map((f) =>
+          f
+            .$$eval("input:visible, select:visible", (els) =>
+              els
+                .map((e) =>
+                  (
+                    e.getAttribute("aria-label") ||
+                    e.getAttribute("name") ||
+                    e.getAttribute("placeholder") ||
+                    e.type ||
+                    ""
+                  )
+                    .toLowerCase()
+                    .trim(),
+                )
+                .sort()
+                .join(","),
             )
-              .toLowerCase()
-              .trim(),
-          )
-          .sort()
-          .join(","),
+            .catch(() => ""),
+        ),
       )
-      .catch(() => "");
+    ).join("|");
     const sig = `${cur.url()}::${ctas.map((c) => c.txt.toLowerCase()).sort().join("|")}::${fieldSig}`;
     if (sig === lastSig) {
       stuck++;
