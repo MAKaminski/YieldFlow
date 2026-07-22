@@ -378,6 +378,9 @@ const FIELD_HINTS = {
   city: [/city/i, /town/i],
   state: [/state|province/i],
   zip: [/zip|postal/i],
+  // Identity — only filled when present in the LOCAL vault (opt-in).
+  dateOfBirth: [/date of birth/i, /\bdob\b/i, /birth ?date/i, /\bd\.?o\.?b\.?\b/i],
+  ssn: [/\bssn\b/i, /social security/i, /\bsocial\b/i, /tax ?(payer )?id/i, /\btin\b/i],
 };
 
 export async function prefill(page, vault, allowedKeys) {
@@ -388,7 +391,10 @@ export async function prefill(page, vault, allowedKeys) {
   for (const el of inputs) {
     const tag = await el.evaluate((n) => n.tagName.toLowerCase()).catch(() => "input");
     const type = (await el.getAttribute("type")) ?? "text";
-    if (tag !== "select" && ["hidden", "submit", "button", "checkbox", "radio", "file", "password"].includes(type))
+    // NOTE: `password` is NOT skipped — banks mask SSN as type="password". Only a
+    // field whose label matches a FIELD_HINTS regex is ever filled, and the vault
+    // has no "password" key, so a "create a password" input is never touched.
+    if (tag !== "select" && ["hidden", "submit", "button", "checkbox", "radio", "file"].includes(type))
       continue;
     const meta = (
       (await el.getAttribute("aria-label")) ||
@@ -737,7 +743,17 @@ export async function driveSteps(page, vault, job, opts = {}) {
 
     if (await atIdentityStep(cur)) {
       log("reached identity/KYC step — handing over");
-      say(yellow("\n🔒 This is the identity step (SSN/DOB). That's yours — I stop here."));
+      // If you put dateOfBirth/ssn in your local vault, prefill (above) already
+      // filled them from disk — but the agent still STOPS here: you review the
+      // values, clear any CAPTCHA / ID check, and click submit yourself.
+      const hasIdentityInVault = (job.identityFields ?? []).some((k) => vault[k] != null);
+      say(
+        yellow(
+          hasIdentityInVault
+            ? "\n🔒 Identity step. I pre-filled SSN/DOB from your local vault — review them, do any CAPTCHA/ID check, and submit. I never click submit."
+            : "\n🔒 This is the identity step (SSN/DOB). That's yours — I stop here.",
+        ),
+      );
       return cur;
     }
 
@@ -1063,7 +1079,15 @@ async function main(cid = campaignId) {
   console.log(
     `Fill:    ${available.length ? available.join(", ") : "(vault empty — copy vault.example.json)"}`,
   );
-  console.log(`You do:  ${(job.identityFields ?? []).join(", ")} + CAPTCHA + submit`);
+  // Identity fields already in the vault get pre-filled from disk; the rest are
+  // yours to type. Either way, CAPTCHA + the final submit are always yours.
+  const identityToType = (job.identityFields ?? []).filter((k) => vault[k] == null);
+  console.log(
+    `You do:  ${[...identityToType, "CAPTCHA", "submit"].join(" + ")}` +
+      (identityToType.length < (job.identityFields ?? []).length
+        ? "   (SSN/DOB pre-filled from your vault — review before submit)"
+        : ""),
+  );
 
   if (dryRun) {
     log("dry-run: not opening a browser");

@@ -26,8 +26,12 @@ export const AUTOFILL_FIELDS = [
   "zip",
 ] as const;
 
-/** Sensitive fields the user must enter/confirm themselves (never sent by cloud). */
-export const IDENTITY_FIELDS = ["ssn", "dob"] as const;
+/**
+ * Identity fields. The agent fills these too IF the user put them in their local
+ * vault (opt-in) — they're never sent by the cloud (only the KEYS are). If absent
+ * from the vault, the user types them; either way the agent never submits.
+ */
+export const IDENTITY_FIELDS = ["dateOfBirth", "ssn"] as const;
 
 export interface AgentJob {
   schemaVersion: number;
@@ -98,7 +102,9 @@ export async function buildAgentJob(
       signupNotes: head.offer.signupNotes,
     },
     steps,
-    autofillFields: AUTOFILL_FIELDS,
+    // The agent may fill any of these from the LOCAL vault (values never leave the
+    // machine). Identity keys included so DOB/SSN auto-fill when the user opted in.
+    autofillFields: [...AUTOFILL_FIELDS, ...IDENTITY_FIELDS],
     identityFields: IDENTITY_FIELDS,
     progressUrl: `${origin}/api/agent/progress`,
   };

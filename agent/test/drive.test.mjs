@@ -178,6 +178,28 @@ async function main() {
       assert(events.includes("personal-continue"), "auto-advanced to the personal form");
       assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
+
+    console.log("Identity autofill (SSN/DOB in the vault fill on the identity step, then STOP):");
+    await withPage(browser, fixture("bmo.html"), async (page) => {
+      // Vault the user opted into: identity values live on-device. The job lists
+      // them in autofillFields (as buildAgentJob does) so prefill fills them.
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      const choose = chooser(["open now", "no, open a checking", "continue", "confirm"]);
+      const active = await driveSteps(page, idVault, idJob, opts(choose));
+      const vals = await active.evaluate(() => ({
+        ssn: document.getElementById("ssn").value,
+        dob: document.getElementById("dob").value,
+      }));
+      const events = await active.evaluate(() => window.__events);
+      assert(vals.ssn === "123-45-6789", "pre-filled SSN from the local vault on the identity step");
+      assert(vals.dob === "01/15/1990", "pre-filled DOB from the local vault on the identity step");
+      assert(!events.includes("identity:submit"), "still STOPPED — filled identity but never submitted");
+    });
   } finally {
     await browser.close();
   }
