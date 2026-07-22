@@ -108,7 +108,7 @@ async function seed() {
       minOpeningDepositCents: usd(25),
       standardApyBps: 1, // 0.01%
       isInterestBearing: true,
-      accountOpeningUrl: "https://www.regions.com/personal-banking/checking-account",
+      accountOpeningUrl: "https://www.regions.com/personal-banking/checking",
       requiresBranchVisit: false,
     })
     .returning();
@@ -204,7 +204,7 @@ async function seed() {
       newCustomerRequired: true,
       customerLookbackMonths: 12,
       termsUrl: "https://www.regions.com/promo/lifegreen-400",
-      applicationUrl: "https://www.regions.com/personal-banking/checking-account",
+      applicationUrl: "https://www.regions.com/personal-banking/checking",
       applicationChannel: "web",
       applicationUrlVerified: false, // set by verify-links during db:discover
       signupNotes:
@@ -235,7 +235,7 @@ async function seed() {
       newMoneyRequired: true,
       newCustomerRequired: false,
       termsUrl: "https://www.regions.com/promo/premium-mma-415",
-      applicationUrl: "https://www.regions.com/personal-banking/savings/money-market-account",
+      applicationUrl: "https://www.regions.com/personal-banking/savings/premium-money-market",
       applicationChannel: "web",
       applicationUrlVerified: false, // set by verify-links during db:discover
       signupNotes:
