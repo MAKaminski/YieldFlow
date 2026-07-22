@@ -409,21 +409,61 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-/** "01/15/1990" or "1990-01-15" → candidate strings per part (most-canonical first). */
+/**
+ * Normalize any DOB the vault might hold into { mm, dd, yyyy } (zero-padded).
+ * Accepts "05/20/1988", "5-20-1988", ISO "1988-05-20", and bare 8-digit
+ * "05201988" (MMDDYYYY) / "19880520" (YYYYMMDD). Returns null if unparseable.
+ */
+function normalizeDob(val) {
+  const s = String(val).trim();
+  const pad = (x) => String(Number(x)).padStart(2, "0");
+  let m = s.match(/^(\d{4})\D(\d{1,2})\D(\d{1,2})$/); // ISO yyyy-mm-dd
+  if (m) return { yyyy: m[1], mm: pad(m[2]), dd: pad(m[3]) };
+  m = s.match(/^(\d{1,2})\D(\d{1,2})\D(\d{4})$/); // mm/dd/yyyy
+  if (m) return { yyyy: m[3], mm: pad(m[1]), dd: pad(m[2]) };
+  const d = s.replace(/\D/g, "");
+  if (d.length === 8) {
+    return /^(19|20)\d{6}$/.test(d)
+      ? { yyyy: d.slice(0, 4), mm: d.slice(4, 6), dd: d.slice(6, 8) } // YYYYMMDD
+      : { mm: d.slice(0, 2), dd: d.slice(2, 4), yyyy: d.slice(4, 8) }; // MMDDYYYY
+  }
+  return null;
+}
+
+/** DOB → candidate strings per part (for split Month/Day/Year fields). */
 function dobParts(val) {
-  const m = String(val).match(/(\d{1,4})\D(\d{1,2})\D(\d{1,4})/);
-  if (!m) return null;
-  let month, day, year;
-  if (m[1].length === 4) [year, month, day] = [m[1], m[2], m[3]];
-  else [month, day, year] = [m[1], m[2], m[3]];
-  const mi = Number(month);
-  if (!(mi >= 1 && mi <= 12) || !year) return null;
-  const pad = (s) => String(Number(s)).padStart(2, "0");
+  const n = normalizeDob(val);
+  if (!n) return null;
+  const mi = Number(n.mm);
+  if (!(mi >= 1 && mi <= 12) || !n.yyyy) return null;
   return {
-    month: [pad(month), String(mi), MONTH_NAMES[mi - 1], MONTH_NAMES[mi - 1].slice(0, 3)],
-    day: [pad(day), String(Number(day))],
-    year: [year],
+    month: [n.mm, String(mi), MONTH_NAMES[mi - 1], MONTH_NAMES[mi - 1].slice(0, 3)],
+    day: [n.dd, String(Number(n.dd))],
+    year: [n.yyyy],
   };
+}
+
+/**
+ * Fill a SINGLE combined date-of-birth field correctly for its input type:
+ *   - <input type="date">  → set the ISO value (YYYY-MM-DD) via fill
+ *   - otherwise            → type MM/DD/YYYY character-by-character so masked/
+ *     auto-formatting inputs insert their own slashes (a plain .fill() of the
+ *     digits is what produced the "05201988" red-error on BMO).
+ * Returns true if it handled the fill.
+ */
+async function fillDob(el, type, val) {
+  const n = normalizeDob(val);
+  if (!n) return el.fill(String(val)).then(() => true).catch(() => false);
+  if (type === "date") {
+    return el.fill(`${n.yyyy}-${n.mm}-${n.dd}`).then(() => true).catch(() => false);
+  }
+  try {
+    await el.fill(""); // clear any partial/masked value first
+    await el.pressSequentially(`${n.mm}/${n.dd}/${n.yyyy}`, { delay: 15 });
+    return true;
+  } catch {
+    return el.fill(`${n.mm}/${n.dd}/${n.yyyy}`).then(() => true).catch(() => false);
+  }
 }
 
 /** "123-45-6789" → { ssn1:[area], ssn2:[group], ssn3:[serial] } (9 digits only). */
@@ -549,6 +589,9 @@ export async function prefill(page, vault, allowedKeys) {
               .selectOption({ value: val })
               .catch(() => el.selectOption({ label: val }))
               .catch(() => el.selectOption(val));
+          } else if (key === "dateOfBirth") {
+            // Format to the field's expected shape + type into masked inputs.
+            await fillDob(el, type, val);
           } else {
             await el.fill(val);
           }
@@ -563,7 +606,7 @@ export async function prefill(page, vault, allowedKeys) {
     }
   }
   log(`prefill: filled ${filled} field(s) [${filledKeys.join(", ") || "none"}]`);
-  return filled;
+  return filledKeys;
 }
 
 // ── Guided click-through ──────────────────────────────────────────────────────
@@ -893,10 +936,14 @@ export async function driveSteps(page, vault, job, opts = {}) {
   for (let step = 1; step <= MAX; step++) {
     // Clear any cookie/consent overlay first, else it masquerades as the gate.
     await dismissConsent(cur);
-    const filled = await prefill(cur, vault, job.autofillFields);
+    const filledKeys = await prefill(cur, vault, job.autofillFields);
+    const filled = filledKeys.length;
     await snap(cur, `step-${step}`);
-    if (filled) say(`Pre-filled ${filled} field(s) on this page.`);
-    if (step === 1) await doReport("prefilled", "open_account", `Pre-filled ${filled} field(s).`);
+    if (filled) {
+      say(`Pre-filled ${filled} field(s) on this page.`);
+      // Granular: report the actual field keys filled on THIS page (never values).
+      await doReport("filled", "open_account", `Filled ${filled}: ${filledKeys.join(", ")}`);
+    }
 
     if (await atIdentityStep(cur)) {
       log("reached identity/KYC step — handing over");
@@ -934,6 +981,7 @@ export async function driveSteps(page, vault, job, opts = {}) {
       await opt.el.check({ timeout: 5000 }).catch(async () => {
         await opt.el.click({ timeout: 5000 }).catch((e) => log(`radio select failed: ${String(e).slice(0, 120)}`));
       });
+      await doReport("clicked", "open_account", `Chose "${opt.label.slice(0, 60)}"`);
       stuck = 0; // making a selection is progress
       await cur.waitForTimeout(Math.min(settleMs, 400));
     }
@@ -1021,6 +1069,7 @@ export async function driveSteps(page, vault, job, opts = {}) {
 
     log(`clicking "${cta.txt}" (choice ${choice + 1})`);
     say(dim(`Clicking "${cta.txt}"…`));
+    await doReport("clicked", "open_account", `Clicked "${cta.txt.slice(0, 60)}"`);
     lastSig = sig;
     const before = cur.url();
     // Re-locate the button by text at click time so a stale handle can't fail.
@@ -1035,6 +1084,11 @@ export async function driveSteps(page, vault, job, opts = {}) {
       log("followed a newly-opened tab");
     }
     log(`after click: ok=${ok} url=${cur.url()} (was ${before}) title="${await cur.title().catch(() => "")}"`);
+    // Granular: report the page the click landed on (title + host, never full PII).
+    if (cur.url() !== before) {
+      const title = (await cur.title().catch(() => "")) || new URL(cur.url()).host;
+      await doReport("navigated", "open_account", `Opened ${title.slice(0, 70)}`);
+    }
   }
   say(
     "\n->  Over to you: finish anything remaining, complete identity verification, and submit.\n" +

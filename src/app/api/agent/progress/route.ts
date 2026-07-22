@@ -15,7 +15,19 @@ export function OPTIONS() {
 const progressSchema = z.object({
   campaignId: z.string(),
   taskType: z.string().optional(),
-  status: z.enum(["started", "prefilled", "awaiting_user", "submitted", "done", "failed", "blocked"]),
+  status: z.enum([
+    "started",
+    "prefilled",
+    // Granular per-action events the agent emits as it drives the page.
+    "filled",
+    "clicked",
+    "navigated",
+    "awaiting_user",
+    "submitted",
+    "done",
+    "failed",
+    "blocked",
+  ]),
   note: z.string().max(500).optional(),
 });
 
@@ -65,12 +77,14 @@ export async function GET(req: Request) {
     .from(schema.agentRun)
     .where(eq(schema.agentRun.runType, "task_execute"))
     .orderBy(desc(schema.agentRun.createdAt))
-    .limit(50);
+    .limit(200);
 
+  // Chronological (oldest → newest) so the activity log reads like a timeline.
   const events = runs
     .map((r) => ({ ...(r.inputRef as Record<string, unknown>), at: r.at }))
     .filter((e) => (e as { campaignId?: string }).campaignId === campaignId)
-    .slice(0, 10);
+    .slice(0, 40)
+    .reverse();
 
   return NextResponse.json({ campaignId, events });
 }

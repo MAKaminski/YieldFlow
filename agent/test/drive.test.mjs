@@ -203,6 +203,21 @@ async function main() {
       assert(!vals.submitted, "STOPPED at the identity step inside the iframe (never submitted)");
     });
 
+    console.log("DOB formatting — masked MM/DD/YYYY input + <input type=date> (the BMO red-error bug):");
+    for (const raw of ["05/20/1988", "05201988"]) {
+      await withPage(browser, fixture("dobformat.html"), async (page) => {
+        const v = { ...VAULT, dateOfBirth: raw, ssn: "123-45-6789" };
+        const job = { autofillFields: Object.keys(v), identityFields: ["dateOfBirth", "ssn"], offer: {} };
+        await driveSteps(page, v, job, opts(chooser([])));
+        const vals = await page.evaluate(() => ({
+          masked: document.getElementById("dobm").value,
+          date: document.getElementById("dobd").value,
+        }));
+        assert(vals.masked === "05/20/1988", `masked DOB became 05/20/1988 (from "${raw}", not 05201988)`);
+        assert(vals.date === "1988-05-20", `type=date DOB got ISO 1988-05-20 (from "${raw}")`);
+      });
+    }
+
     console.log("Business (KYB) form — fills business fields + EIN, stops at owner SSN/DOB:");
     await withPage(browser, fixture("business.html"), async (page) => {
       const bizVault = {

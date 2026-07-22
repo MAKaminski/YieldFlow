@@ -117,19 +117,26 @@ export function AgentLauncher({
 
       {launched && (
         <div className="mt-3 border-t border-edge/60 pt-3">
-          <div className="text-[10px] uppercase tracking-wide text-mute">Agent activity</div>
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] uppercase tracking-wide text-mute">Agent activity</div>
+            {events.length > 0 && (
+              <div className="text-[10px] text-mute">{events.length} events</div>
+            )}
+          </div>
           {events.length === 0 ? (
             <p className="mt-1 text-xs text-mute">
               Waiting for the agent… if nothing happens, the app may not be installed.
             </p>
           ) : (
-            <ul className="mt-1 space-y-1">
+            <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto pr-1">
               {events.map((e, i) => (
-                <li key={i} className="flex items-center gap-2 text-xs">
-                  <span className="text-accent">•</span>
-                  <span className="font-mono text-mute">{e.taskType ?? "step"}</span>
-                  <span>{(e.status ?? "").replace(/_/g, " ")}</span>
-                  {e.note && <span className="text-mute">— {e.note}</span>}
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <span className={dotColor(e.status)}>•</span>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-mute">
+                    {(e.status ?? "").replace(/_/g, " ")}
+                  </span>
+                  {e.note && <span className="text-slate-300">{e.note}</span>}
+                  {e.at && <span className="ml-auto shrink-0 text-[10px] text-mute">{fmtTime(e.at)}</span>}
                 </li>
               ))}
             </ul>
@@ -138,4 +145,33 @@ export function AgentLauncher({
       )}
     </div>
   );
+}
+
+function dotColor(status?: string): string {
+  switch (status) {
+    case "filled":
+      return "text-accent";
+    case "clicked":
+      return "text-sky-400";
+    case "navigated":
+      return "text-violet-400";
+    case "awaiting_user":
+      return "text-warn";
+    case "submitted":
+    case "done":
+      return "text-emerald-400";
+    case "failed":
+    case "blocked":
+      return "text-danger";
+    default:
+      return "text-mute";
+  }
+}
+
+function fmtTime(at: string | null): string {
+  if (!at) return "";
+  const d = new Date(at);
+  return isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
