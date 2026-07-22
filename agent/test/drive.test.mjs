@@ -179,6 +179,37 @@ async function main() {
       assert(!events.includes("identity:submit"), "still STOPPED at identity (never auto-submits)");
     });
 
+    console.log("BMO-style SmartForm (fields labelled only by <label for>, opaque ids):");
+    await withPage(browser, fixture("smartform.html"), async (page) => {
+      const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };
+      const idJob = {
+        autofillFields: Object.keys(idVault),
+        identityFields: ["dateOfBirth", "ssn"],
+        offer: {},
+      };
+      await driveSteps(page, idVault, idJob, opts(chooser([])));
+      const v = await page.evaluate(() =>
+        Object.fromEntries(
+          ["q_0001", "q_0002", "q_0003", "q_0004", "q_0005", "q_0006", "q_0007", "q_0008", "q_0009", "q_0010", "q_0011"].map(
+            (id) => [id, document.getElementById(id).value],
+          ),
+        ),
+      );
+      const events = await page.evaluate(() => window.__events);
+      assert(v.q_0001 === "Jordan", "filled First Name via <label for>");
+      assert(v.q_0002 === "Lee", "filled Middle Name via <label for>");
+      assert(v.q_0003 === "Rivers", "filled Last Name via <label for>");
+      assert(v.q_0004 === "jordan@example.com", "filled Email via a wrapping <label>");
+      assert(v.q_0005 === "5551234567", "filled Phone via aria-labelledby");
+      assert(v.q_0006 === "123 Peachtree St", "filled Street via <label for>");
+      assert(v.q_0007 === "Atlanta", "filled City via <label for>");
+      assert(v.q_0008 === "GA", "selected State <select> via <label for>");
+      assert(v.q_0009 === "30303", "filled ZIP via <label for>");
+      assert(v.q_0010 === "01/15/1990", "filled DOB via <label for>");
+      assert(v.q_0011 === "123-45-6789", "filled masked SSN via <label for>");
+      assert(!events.includes("identity:submit"), "STOPPED at identity (never submitted)");
+    });
+
     console.log("Multi-URL flow (real page-to-page navigations, prefill re-runs each page):");
     await withPage(browser, fixture("multiurl1.html"), async (page) => {
       const idVault = { ...VAULT, dateOfBirth: "01/15/1990", ssn: "123-45-6789" };

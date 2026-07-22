@@ -417,10 +417,14 @@ function ssnParts(val) {
   return { ssn1: [d.slice(0, 3)], ssn2: [d.slice(3, 5)], ssn3: [d.slice(5)] };
 }
 
+// NOTE: month/day/year hints deliberately avoid bare mm/dd/yyyy tokens — a
+// COMBINED "Date of Birth" field with a "MM/DD/YYYY" placeholder would otherwise
+// match the day/month/year part and get a single part instead of the whole date.
+// A guard below also skips these whenever the combined dateOfBirth hint matches.
 const COMPOSITE_FIELDS = {
-  dobMonth: { from: "dateOfBirth", part: "month", parse: dobParts, hints: [/birth ?month/i, /month of birth/i, /^month$/i, /\bmm\b/i] },
-  dobDay: { from: "dateOfBirth", part: "day", parse: dobParts, hints: [/birth ?day/i, /day of birth/i, /^day$/i, /\bdd\b/i] },
-  dobYear: { from: "dateOfBirth", part: "year", parse: dobParts, hints: [/birth ?year/i, /year of birth/i, /^year$/i, /\byyyy\b/i] },
+  dobMonth: { from: "dateOfBirth", part: "month", parse: dobParts, hints: [/birth ?month/i, /month of birth/i, /^month$/i] },
+  dobDay: { from: "dateOfBirth", part: "day", parse: dobParts, hints: [/birth ?day/i, /day of birth/i, /^day$/i] },
+  dobYear: { from: "dateOfBirth", part: "year", parse: dobParts, hints: [/birth ?year/i, /year of birth/i, /^year$/i] },
   ssnArea: { from: "ssn", part: "ssn1", parse: ssnParts, hints: [/ssn.*area/i, /area number/i, /ssn.?1\b/i, /ssn part ?1/i] },
   ssnGroup: { from: "ssn", part: "ssn2", parse: ssnParts, hints: [/ssn.*group/i, /group number/i, /ssn.?2\b/i, /ssn part ?2/i] },
   ssnSerial: { from: "ssn", part: "ssn3", parse: ssnParts, hints: [/ssn.*serial/i, /serial number/i, /ssn.?3\b/i, /ssn part ?3/i] },
@@ -451,12 +455,35 @@ export async function prefill(page, vault, allowedKeys) {
     // has no "password" key, so a "create a password" input is never touched.
     if (tag !== "select" && ["hidden", "submit", "button", "checkbox", "radio", "file"].includes(type))
       continue;
+    // Build the field descriptor IN-BROWSER so we can resolve the associated
+    // <label> — real bank forms often label a field only by <label for="opaqueId">
+    // (or a wrapping <label>, or aria-labelledby), with no aria-label/name/
+    // placeholder. Reading just the attributes misses those (the real BMO run
+    // filled 6/21 for exactly this reason). CSS.escape is a browser global here.
     const meta = (
-      (await el.getAttribute("aria-label")) ||
-      (await el.getAttribute("name")) ||
-      (await el.getAttribute("placeholder")) ||
-      (await el.getAttribute("id")) ||
-      ""
+      await el
+        .evaluate((n) => {
+          const parts = [];
+          const push = (s) => {
+            if (s && s.trim()) parts.push(s.trim());
+          };
+          push(n.getAttribute("aria-label"));
+          push(n.getAttribute("name"));
+          push(n.getAttribute("placeholder"));
+          push(n.id);
+          if (n.id)
+            for (const l of document.querySelectorAll(`label[for="${CSS.escape(n.id)}"]`)) push(l.textContent);
+          const wrap = n.closest("label");
+          if (wrap) push(wrap.textContent);
+          const lb = n.getAttribute("aria-labelledby");
+          if (lb)
+            for (const id of lb.split(/\s+/)) {
+              const e = document.getElementById(id);
+              if (e) push(e.textContent);
+            }
+          return parts.join(" ").replace(/\s+/g, " ").trim();
+        })
+        .catch(() => "")
     ).toLowerCase();
     if (!meta) continue;
 
@@ -464,6 +491,9 @@ export async function prefill(page, vault, allowedKeys) {
     // the plain hints so a "SSN area"/"Birth month" box gets its PART, not the
     // whole value. A matched-but-unparseable value still consumes the field
     // (`handled`) so the plain loop won't then dump the full value into it.
+    // Part hints (birth month/day/year) only match a genuine sub-field — a
+    // COMBINED "Date of Birth" field (even one with a MM/DD/YYYY placeholder) won't
+    // match them, so it falls through to the plain loop and gets the whole value.
     let handled = false;
     for (const [ck, spec] of Object.entries(COMPOSITE_FIELDS)) {
       if (!allowedKeys.includes(spec.from) || vault[spec.from] == null) continue;

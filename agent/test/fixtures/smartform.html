@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  Faithful fake of a dense real-bank application form (modeled on BMO's
+  deposits.usdigital.bmo.com "SmartForm"). The realism that matters here: fields
+  are described ONLY by an associated <label for="opaqueId"> — NO aria-label, NO
+  semantic name, NO placeholder, and OPAQUE ids (q_0001…). This is why the first
+  real run only filled 6 of ~20 fields: prefill read id/name/aria-label, which
+  are opaque here, and never looked at the <label> text.
+
+  Also exercises: a wrapping <label>text<input></label> (Email), an
+  aria-labelledby pointer (Phone), a State <select>, a masked SSN, single DOB.
+  All on one URL; the agent fills everything, then STOPS at identity.
+-->
+<html>
+<head><meta charset="utf-8"><title>Open your account — BMO SmartForm</title></head>
+<body>
+  <script>window.__events = [];</script>
+  <h2>Open your account</h2>
+  <form onsubmit="return false">
+    <!-- label-for + opaque id, nothing else -->
+    <label for="q_0001">First Name</label><input id="q_0001"><br>
+    <label for="q_0002">Middle Name</label><input id="q_0002"><br>
+    <label for="q_0003">Last Name</label><input id="q_0003"><br>
+
+    <!-- wrapping label (text is the label, input nested inside) -->
+    <label>Email Address <input id="q_0004"></label><br>
+
+    <!-- aria-labelledby pointing at a separate text node -->
+    <span id="lbl_phone">Mobile Phone</span>
+    <input id="q_0005" aria-labelledby="lbl_phone"><br>
+
+    <label for="q_0006">Home Street Address</label><input id="q_0006"><br>
+    <label for="q_0007">City</label><input id="q_0007"><br>
+
+    <label for="q_0008">State</label>
+    <select id="q_0008">
+      <option value="">Select…</option>
+      <option value="CA">California</option>
+      <option value="GA">Georgia</option>
+      <option value="NY">New York</option>
+    </select><br>
+
+    <label for="q_0009">ZIP Code</label><input id="q_0009"><br>
+
+    <!-- identity, label-for, masked SSN -->
+    <label for="q_0010">Date of Birth</label><input id="q_0010" placeholder="MM/DD/YYYY"><br>
+    <label for="q_0011">Social Security Number</label><input id="q_0011" type="password"><br>
+
+    <button onclick="ev('identity:submit')">SUBMIT APPLICATION</button>
+  </form>
+  <script>function ev(n){ window.__events.push(n); }</script>
+</body>
+</html>
